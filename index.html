@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#111008">
+<title>Log Tally</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<!-- Google Identity Services (for Sheets OAuth) -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<div class="offline-badge" id="offlineBadge">● OFFLINE</div>
+
+<div class="app">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-top">
+      <div class="logo">LOG TALLY</div>
+      <div class="header-meta">
+        <div class="scale-badge" id="scaleDisplay" onclick="openScaleModal()">No Scale Set</div>
+        <div class="tally-name" id="tallyNameBtn" onclick="openTallyModal()">TAP TO NAME</div>
+      </div>
+    </div>
+    <div class="header-stats">
+      <div class="stat"><div class="stat-val" id="statLogs">0</div><div class="stat-lbl">Logs</div></div>
+      <div class="stat"><div class="stat-val" id="statBF">0</div><div class="stat-lbl">Board Ft</div></div>
+      <div class="stat"><div class="stat-val" id="statNextTag">—</div><div class="stat-lbl">Next Tag</div></div>
+    </div>
+  </div>
+
+  <!-- SYNC BAR -->
+  <div class="sync-bar">
+    <button class="sync-btn" id="syncBtn">☁ SIGN IN TO SHEETS</button>
+    <span class="sync-badge" id="syncBadge"></span>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab active" id="tab-entry" onclick="showTab('entry')">Entry</div>
+    <div class="tab" id="tab-logs" onclick="showTab('logs')">Logs</div>
+    <div class="tab" id="tab-summary" onclick="showTab('summary')">Summary</div>
+    <div class="tab" id="tab-export" onclick="showTab('export')">Export</div>
+  </div>
+
+  <!-- ENTRY PANEL -->
+  <div class="panel active" id="panel-entry">
+    <div class="tag-row">
+      <div class="tag-label">Next Tag #</div>
+      <div class="tag-val" id="nextTagDisplay">—</div>
+      <div class="tag-controls">
+        <button class="btn-sm" onclick="openSeriesModal()">New Series</button>
+        <button class="btn-sm" onclick="skipTag()">Skip</button>
+      </div>
+    </div>
+
+    <div class="fields">
+      <div>
+        <div class="field-label">Length</div>
+        <input class="field-input" id="fLength" placeholder="10/9" inputmode="decimal" oninput="onFieldInput(this,'hLength')">
+      </div>
+      <div>
+        <div class="field-label">Diameter</div>
+        <input class="field-input" id="fDiameter" placeholder="15/13" inputmode="decimal" oninput="onFieldInput(this,'hDiameter')">
+      </div>
+    </div>
+    <div class="hints-row">
+      <div class="field-hint" id="hLength"></div>
+      <div class="field-hint" id="hDiameter"></div>
+    </div>
+
+    <div class="footage-preview">
+      <div class="label" id="bfLabel">Board Feet</div>
+      <div class="value" id="footagePreview">—</div>
+    </div>
+
+    <div class="speech-note">
+      <strong style="color:var(--fresh)">"twenty slash eighteen, fourteen"</strong> — length &amp; diameter<br>
+      <strong style="color:var(--fresh)">"save"</strong> · <strong style="color:var(--fresh)">"skip"</strong> · <strong style="color:var(--fresh)">"tally name Coldwater 633"</strong><br>
+      <strong style="color:var(--fresh)">"new series 72400"</strong> — new tag sequence
+    </div>
+
+    <button class="mic-btn" id="micBtn" onclick="Speech.toggle()">
+      <span id="micLabel">🎤 &nbsp;TAP TO SPEAK</span>
+    </button>
+    <div class="transcript-box" id="transcriptBox">Tap mic and speak measurements or commands</div>
+
+    <div class="action-row">
+      <button class="btn-save" id="saveBtn" onclick="saveLog()" disabled>SAVE LOG</button>
+      <button class="btn-clear" onclick="clearFields()">CLEAR</button>
+    </div>
+  </div>
+
+  <!-- LOGS PANEL -->
+  <div class="panel" id="panel-logs">
+    <div id="logList"><div class="empty-state">No logs entered yet.<br>Switch to Entry to begin.</div></div>
+  </div>
+
+  <!-- SUMMARY PANEL -->
+  <div class="panel" id="panel-summary">
+    <div class="summary-title">DIAMETER BREAKDOWN (cutback)</div>
+    <table class="summary-table">
+      <thead>
+        <tr>
+          <th>Diameter</th>
+          <th style="text-align:right">Count</th>
+          <th id="summaryHeaderBF" style="text-align:right">Board Ft</th>
+        </tr>
+      </thead>
+      <tbody id="summaryBody"></tbody>
+    </table>
+  </div>
+
+  <!-- EXPORT PANEL -->
+  <div class="panel" id="panel-export">
+    <div class="summary-title" style="margin-top:0">EXPORT</div>
+    <button class="btn-export" onclick="exportCSV()">📄 &nbsp;EXPORT CSV FOR GOOGLE SHEETS</button>
+    <button class="btn-export" onclick="exportJSON()">💾 &nbsp;SAVE BACKUP (JSON)</button>
+    <button class="btn-export" onclick="document.getElementById('importFile').click()">📂 &nbsp;RESTORE FROM BACKUP</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="handleImport(event)">
+    <div class="btn-danger" onclick="confirmClearAll()">⚠ &nbsp;CLEAR ALL DATA FOR NEW LOAD</div>
+  </div>
+
+</div><!-- /.app -->
+
+<!-- MODALS -->
+
+<!-- New Series -->
+<div class="modal-bg" id="seriesModal">
+  <div class="modal">
+    <h3>NEW TAG SERIES</h3>
+    <p>Enter the first tag number for the new series.</p>
+    <input class="modal-input" id="seriesInput" type="number" placeholder="72300" inputmode="numeric">
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('seriesModal')">Cancel</button>
+      <button class="btn-confirm" onclick="confirmNewSeries()">START</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tally Name -->
+<div class="modal-bg" id="tallyModal">
+  <div class="modal">
+    <h3>LOAD NAME</h3>
+    <p>Give this tally a name or number, e.g. "Coldwater 633"</p>
+    <input class="modal-input left" id="tallyInput" type="text" placeholder="Load name...">
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('tallyModal')">Cancel</button>
+      <button class="btn-confirm" onclick="confirmTallyName()">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Scale Selector -->
+<div class="modal-bg" id="scaleModal">
+  <div class="modal">
+    <h3>SELECT SCALE</h3>
+    <p>Choose the board foot formula for this tally. Can be changed per load.</p>
+    <div class="scale-options">
+      <div class="scale-option" onclick="setScale('doyle')">
+        <div class="opt-title">Doyle</div>
+        <div class="opt-desc">((D−4)² × L) / 16 — common for softwoods</div>
+      </div>
+      <div class="scale-option" onclick="setScale('scribner')">
+        <div class="opt-title">Scribner</div>
+        <div class="opt-desc">(0.79D² − 2D − 4) × L / 16 — common for hardwoods</div>
+      </div>
+      <div class="scale-option" onclick="setScale('both')">
+        <div class="opt-title">Both</div>
+        <div class="opt-desc">Shows Doyle + Scribner columns — for dual-formula customers</div>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn-cancel" onclick="closeModal('scaleModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Log -->
+<div class="modal-bg" id="editModal">
+  <div class="modal">
+    <h3>EDIT LOG <span id="editTagLabel" style="color:var(--fresh);font-size:18px;"></span></h3>
+    <p>Edit values. Use slash for cutbacks e.g. 10/9.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">
+      <div>
+        <div style="font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;font-weight:600;">Length</div>
+        <input class="modal-input" id="editLength" style="font-size:18px;margin-bottom:0;padding:10px;">
+      </div>
+      <div>
+        <div style="font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;font-weight:600;">Diameter</div>
+        <input class="modal-input" id="editDiameter" style="font-size:18px;margin-bottom:0;padding:10px;">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('editModal')">Cancel</button>
+      <button class="btn-delete" onclick="deleteLog()">Delete</button>
+      <button class="btn-confirm" onclick="confirmEdit()">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Scripts — order matters -->
+<script src="js/config.js"></script>
+<script src="js/speech.js"></script>
+<script src="js/sheets.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
