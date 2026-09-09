@@ -1,6 +1,6 @@
 // ─── GOOGLE SHEETS + DRIVE INTEGRATION ───────────────────────────────────────
 const Sheets = (() => {
-  const SCOPES = ['https://www.googleapis.com/auth/spreadsheets','https://www.googleapis.com/auth/drive.file'].join(' ');
+    const SCOPES = ['https://www.googleapis.com/auth/drive.file'].join(' ');
   let tokenClient = null, accessToken = null, isSignedIn = false;
 
   function init() {
