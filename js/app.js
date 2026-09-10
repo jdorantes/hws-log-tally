@@ -21,6 +21,7 @@ function calcBF(lengthVal, diamVal, scale) {
 }
 
 function primaryBF(bf) { if (!bf) return null; return bf.doyle ?? bf.scribner ?? null; }
+function bfToM3(bf) { return bf ? Math.round(bf * 0.002360 * 1000) / 1000 : null; }
 
 function parseField(val) {
   if (val === null || val === undefined || val === '') return null;
@@ -42,39 +43,153 @@ function updateHeader() {
   const nt = state.nextTag !== null ? state.nextTag : '—';
   document.getElementById('statNextTag').textContent = nt;
   document.getElementById('nextTagDisplay').textContent = nt;
-  document.getElementById('tallyNameBtn').textContent = state.tallyName || 'Name Load';
+  const btn = document.getElementById('tallyNameBtn');
+  if (state.spreadsheetId && state.tallyName) {
+    btn.innerHTML = '<a href="' + Sheets.sheetsUrl(state.spreadsheetId) + '" target="_blank" style="color:inherit;text-decoration:none">' + state.tallyName + ' ↗</a>';
+    btn.onclick = null;
+  } else {
+    btn.textContent = state.tallyName || 'Name Load';
+    btn.onclick = openTallyModal;
+  }
   document.getElementById('scaleDisplay').textContent = state.scale ? state.scale.charAt(0).toUpperCase() + state.scale.slice(1) : 'No Scale';
   updateBFLabel();
+  updatePlaceholders();
+  updateBottomNav();
   if (currentMode === 'keypad') Keypad.render();
 }
 
 function updateBFLabel() {
   const label = document.getElementById('bfLabel');
   if (!label) return;
-  if (state.scale === 'both') label.textContent = 'Doyle / Scribner BF';
-  else if (state.scale === 'doyle') label.textContent = 'Board Feet (Doyle)';
+  if (state.scale === 'both')          label.textContent = 'Doyle / Scribner BF';
+  else if (state.scale === 'doyle')    label.textContent = 'Board Feet (Doyle)';
   else if (state.scale === 'scribner') label.textContent = 'Board Feet (Scribner)';
-  else label.textContent = 'Board Feet';
+  else                                  label.textContent = 'Board Feet';
+}
+
+function updatePlaceholders() {
+  const hasLogs = state.logs.length > 0;
+  const fL = document.getElementById('fLength');
+  const fD = document.getElementById('fDiameter');
+  if (fL) fL.placeholder = hasLogs ? '' : '10/9';
+  if (fD) fD.placeholder = hasLogs ? '' : '15/13';
 }
 
 let currentMode = 'keypad';
+let currentTab  = 'entry';
 
 function switchMode(mode) {
   currentMode = mode;
-  document.getElementById('modeVoiceBtn').classList.toggle('mode-active', mode === 'voice');
   document.getElementById('modeKeypadBtn').classList.toggle('mode-active', mode === 'keypad');
-  document.getElementById('voiceEntryPanel').style.display = mode === 'voice' ? 'block' : 'none';
+  document.getElementById('modeVoiceBtn').classList.toggle('mode-active', mode === 'voice');
+  document.getElementById('voiceEntryPanel').style.display  = mode === 'voice'  ? 'block' : 'none';
   document.getElementById('keypadEntryPanel').style.display = mode === 'keypad' ? 'block' : 'none';
-  const isKeypad = mode === 'keypad';
-  document.getElementById('mainTabs').classList.toggle('hidden', isKeypad);
-  document.getElementById('syncBar').classList.toggle('hidden', isKeypad);
-  document.getElementById('headerStats').classList.toggle('hidden', isKeypad);
-  document.getElementById('menuBtn').classList.toggle('hidden', !isKeypad);
-  document.getElementById('mainHeader').classList.toggle('slim', isKeypad);
-  if (isKeypad) { showTab('entry', true); Keypad.reset(); Keypad.render(); }
+  document.getElementById('mainHeader').classList.toggle('slim', mode === 'keypad');
+  document.getElementById('headerStats').classList.toggle('hidden', mode === 'keypad');
+  document.getElementById('syncBar').classList.toggle('hidden', mode === 'keypad');
+  if (mode === 'keypad') { showTab('entry', true); Keypad.reset(); Keypad.render(); }
+  updateBottomNav();
 }
 
-function openMenuModal() { document.getElementById('menuModal').classList.add('show'); }
+function showTab(name, silent = false) {
+  currentTab = name;
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  if (!silent) { if (name === 'logs') renderLogs(); if (name === 'summary') renderSummary(); }
+  updateBottomNav();
+}
+
+function navTo(name) {
+  if (name === 'entry') {
+    currentMode = 'keypad';
+    document.getElementById('modeKeypadBtn').classList.add('mode-active');
+    document.getElementById('modeVoiceBtn').classList.remove('mode-active');
+    document.getElementById('voiceEntryPanel').style.display = 'none';
+    document.getElementById('keypadEntryPanel').style.display = 'block';
+    document.getElementById('mainHeader').classList.add('slim');
+    document.getElementById('headerStats').classList.add('hidden');
+    document.getElementById('syncBar').classList.add('hidden');
+    showTab('entry', true);
+    Keypad.reset(); Keypad.render();
+  } else {
+    if (currentMode === 'keypad') {
+      currentMode = 'browse';
+      document.getElementById('modeKeypadBtn').classList.remove('mode-active');
+      document.getElementById('modeVoiceBtn').classList.remove('mode-active');
+      document.getElementById('keypadEntryPanel').style.display = 'none';
+      document.getElementById('voiceEntryPanel').style.display = 'none';
+      document.getElementById('mainHeader').classList.remove('slim');
+      document.getElementById('headerStats').classList.remove('hidden');
+      document.getElementById('syncBar').classList.remove('hidden');
+    }
+    showTab(name);
+  }
+}
+
+function updateBottomNav() {
+  ['entry','logs','summary','export'].forEach(n => {
+    const el = document.getElementById('nav-' + n);
+    if (el) el.classList.toggle('nav-active', currentTab === n);
+  });
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(window._tt);
+  window._tt = setTimeout(() => el.className = 'toast', 2600);
+}
+
+let tagPrefix = '';
+let tagNumLength = 5;
+
+function openSeriesModal() { document.getElementById('seriesInput').value = ''; document.getElementById('seriesModal').classList.add('show'); setTimeout(() => document.getElementById('seriesInput').focus(), 120); }
+function confirmNewSeries() {
+  const v = document.getElementById('seriesInput').value.trim();
+  if (!v) { toast('Enter a starting tag number', 'error'); return; }
+  const num = parseInt(v); if (isNaN(num)) { toast('Invalid number', 'error'); return; }
+  tagPrefix = ''; tagNumLength = v.length; state.nextTag = num; state.currentSeries++;
+  saveState(); updateHeader(); closeModal('seriesModal'); toast('New series starting at ' + num, 'success');
+}
+function skipTag() {
+  if (state.nextTag === null) { toast('Set a starting tag first', 'error'); return; }
+  incrementTag(); saveState(); updateHeader(); toast('Skipped — now at ' + state.nextTag, 'success');
+}
+function incrementTag() {
+  if (tagPrefix && typeof state.nextTag === 'string') {
+    const numPart = parseInt(String(state.nextTag).slice(tagPrefix.length)) + 1;
+    state.nextTag = tagPrefix + String(numPart).padStart(tagNumLength, '0');
+  } else { state.nextTag = (parseInt(state.nextTag) || 0) + 1; }
+}
+
+function openScaleModal() { document.getElementById('scaleModal').classList.add('show'); }
+function setScale(scale) {
+  state.scale = scale; saveState(); updateHeader(); closeModal('scaleModal');
+  toast('Scale: ' + scale.charAt(0).toUpperCase() + scale.slice(1), 'success');
+  updateFootagePreview(); if (currentMode === 'keypad') Keypad.render();
+}
+
+function openTallyModal() { document.getElementById('tallyInput').value = state.tallyName; document.getElementById('tallyModal').classList.add('show'); setTimeout(() => document.getElementById('tallyInput').focus(), 120); }
+async function confirmTallyName() {
+  state.tallyName = document.getElementById('tallyInput').value.trim();
+  if (Sheets.isSignedIn() && !state.spreadsheetId && state.tallyName) {
+    toast('Creating spreadsheet...');
+    const id = await Sheets.createSpreadsheet(state.tallyName, state.scale || 'doyle');
+    if (id) { state.spreadsheetId = id; toast('Spreadsheet created!', 'success'); }
+  }
+  saveState(); updateHeader(); closeModal('tallyModal');
+}
+
+function shareTallyLink() {
+  if (!state.spreadsheetId) { toast('No spreadsheet yet — save a log first', 'error'); return; }
+  const url = Sheets.sheetsUrl(state.spreadsheetId);
+  const name = state.tallyName || 'Log Tally';
+  if (navigator.share) { navigator.share({ title: name, text: 'HWS Log Tally: ' + name, url }).catch(() => {}); }
+  else { navigator.clipboard.writeText(url).then(() => toast('Link copied!', 'success')); }
+}
 
 function onFieldInput(el, hintId) {
   const p = parseField(el.value);
@@ -96,75 +211,11 @@ function updateFootagePreview() {
 }
 
 function clearFields() {
-  ['fLength', 'fDiameter'].forEach(id => { document.getElementById(id).value = ''; document.getElementById(id).classList.remove('has-cutback'); });
-  ['hLength', 'hDiameter'].forEach(id => document.getElementById(id).textContent = '');
+  ['fLength','fDiameter'].forEach(id => { const el = document.getElementById(id); el.value = ''; el.classList.remove('has-cutback'); });
+  ['hLength','hDiameter'].forEach(id => document.getElementById(id).textContent = '');
   document.getElementById('footagePreview').textContent = '—';
   document.getElementById('saveBtn').disabled = true;
   document.getElementById('transcriptBox').textContent = 'Tap mic and speak measurements or commands';
-}
-
-function showTab(name, silent = false) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('panel-' + name).classList.add('active');
-  const tabEl = document.getElementById('tab-' + name);
-  if (tabEl) tabEl.classList.add('active');
-  if (!silent) { if (name === 'logs') renderLogs(); if (name === 'summary') renderSummary(); }
-}
-
-function closeModal(id) { document.getElementById(id).classList.remove('show'); }
-
-function toast(msg, type = '') {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.className = 'toast show' + (type ? ' ' + type : '');
-  clearTimeout(window._tt);
-  window._tt = setTimeout(() => el.className = 'toast', 2600);
-}
-
-let tagPrefix = '';
-let tagNumLength = 5;
-
-function openSeriesModal() { document.getElementById('seriesInput').value = ''; document.getElementById('seriesModal').classList.add('show'); setTimeout(() => document.getElementById('seriesInput').focus(), 120); }
-function confirmNewSeries() {
-  const v = document.getElementById('seriesInput').value.trim();
-  if (!v) { toast('Enter a starting tag number', 'error'); return; }
-  const num = parseInt(v);
-  if (isNaN(num)) { toast('Invalid number', 'error'); return; }
-  tagPrefix = ''; tagNumLength = v.length;
-  state.nextTag = num; state.currentSeries++;
-  saveState(); updateHeader(); closeModal('seriesModal');
-  toast('New series starting at ' + num, 'success');
-}
-function skipTag() {
-  if (state.nextTag === null) { toast('Set a starting tag first', 'error'); return; }
-  incrementTag(); saveState(); updateHeader();
-  toast('Skipped — now at ' + state.nextTag, 'success');
-}
-function incrementTag() {
-  if (tagPrefix && typeof state.nextTag === 'string') {
-    const numPart = parseInt(String(state.nextTag).slice(tagPrefix.length)) + 1;
-    state.nextTag = tagPrefix + String(numPart).padStart(tagNumLength, '0');
-  } else { state.nextTag = (parseInt(state.nextTag) || 0) + 1; }
-}
-
-function openScaleModal() { document.getElementById('scaleModal').classList.add('show'); }
-function setScale(scale) {
-  state.scale = scale; saveState(); updateHeader(); closeModal('scaleModal');
-  toast('Scale: ' + scale.charAt(0).toUpperCase() + scale.slice(1), 'success');
-  updateFootagePreview();
-  if (currentMode === 'keypad') Keypad.render();
-}
-
-function openTallyModal() { document.getElementById('tallyInput').value = state.tallyName; document.getElementById('tallyModal').classList.add('show'); setTimeout(() => document.getElementById('tallyInput').focus(), 120); }
-async function confirmTallyName() {
-  state.tallyName = document.getElementById('tallyInput').value.trim();
-  if (Sheets.isSignedIn() && !state.spreadsheetId && state.tallyName) {
-    toast('Creating spreadsheet...');
-    const id = await Sheets.createSpreadsheet(state.tallyName, state.scale || 'doyle');
-    if (id) { state.spreadsheetId = id; toast('Spreadsheet created!', 'success'); }
-  }
-  saveState(); updateHeader(); closeModal('tallyModal');
 }
 
 async function saveLog() {
@@ -177,16 +228,15 @@ async function saveLog() {
   const lp = parseField(l), dp = parseField(d);
   const log = { id: Date.now(), tag: state.nextTag, series: state.currentSeries, scale: state.scale, length: l, diameter: d, lengthCut: lp ? lp.cut : null, diameterCut: dp ? dp.cut : null, bf, rowNum: state.logs.length + 1 };
   state.logs.push(log); incrementTag(); saveState(); updateHeader(); clearFields();
-  const bfDisplay = state.scale === 'both' ? bf.doyle + ' / ' + bf.scribner + ' BF' : primaryBF(bf) + ' BF';
-  toast('Saved — ' + bfDisplay, 'success');
-  if (state.spreadsheetId || (Sheets.isSignedIn() && state.tallyName)) {
-    (async () => { if (!state.spreadsheetId && Sheets.isSignedIn()) { const id = await Sheets.createSpreadsheet(state.tallyName, state.scale); if (id) { state.spreadsheetId = id; saveState(); } } await Sheets.syncLog(state.spreadsheetId, [log]); })();
-  }
+  toast('Saved — ' + (state.scale === 'both' ? bf.doyle + '/' + bf.scribner : primaryBF(bf)) + ' BF', 'success');
+  syncAfterSave(log);
 }
 
 window.appState = () => state;
-window.calcBF = calcBF;
-window.toast = toast;
+window.calcBF   = calcBF;
+window.bfToM3   = bfToM3;
+window.toast    = toast;
+window.navTo    = navTo;
 
 window.setNextTag = function(fullTag, prefix, startNum, numLen) {
   tagPrefix = prefix || ''; tagNumLength = numLen || 5;
@@ -202,15 +252,24 @@ window.saveLogFromKeypad = function(lengthVal, diamVal) {
   const lp = parseField(lengthVal), dp = parseField(diamVal);
   const log = { id: Date.now(), tag: state.nextTag, series: state.currentSeries, scale: state.scale, length: lengthVal, diameter: diamVal, lengthCut: lp ? lp.cut : null, diameterCut: dp ? dp.cut : null, bf, rowNum: state.logs.length + 1 };
   state.logs.push(log); incrementTag(); saveState(); updateHeader();
-  const bfDisplay = state.scale === 'both' ? bf.doyle + ' / ' + bf.scribner + ' BF' : primaryBF(bf) + ' BF';
-  toast('Saved — ' + bfDisplay, 'success');
-  if (state.spreadsheetId || (Sheets.isSignedIn() && state.tallyName)) {
-    (async () => { if (!state.spreadsheetId && Sheets.isSignedIn()) { const id = await Sheets.createSpreadsheet(state.tallyName, state.scale); if (id) { state.spreadsheetId = id; saveState(); } } await Sheets.syncLog(state.spreadsheetId, [log]); })();
-  }
+  toast('Saved — ' + (state.scale === 'both' ? bf.doyle + '/' + bf.scribner : primaryBF(bf)) + ' BF', 'success');
+  syncAfterSave(log);
   return true;
 };
 
 window.skipTag = function() { skipTag(); };
+
+function syncAfterSave(log) {
+  if (state.spreadsheetId || (Sheets.isSignedIn() && state.tallyName)) {
+    (async () => {
+      if (!state.spreadsheetId && Sheets.isSignedIn()) {
+        const id = await Sheets.createSpreadsheet(state.tallyName, state.scale);
+        if (id) { state.spreadsheetId = id; saveState(); updateHeader(); }
+      }
+      await Sheets.syncLog(state.spreadsheetId, [log]);
+    })();
+  }
+}
 
 function openEditModal(id) {
   const log = state.logs.find(l => l.id === id); if (!log) return;
@@ -243,7 +302,6 @@ function fmtCell(val) {
   if (p.hasCutback) return '<span class="phys">' + p.phys + '</span><br><span class="cut">↓' + p.cut + '</span>';
   return '<span class="phys">' + p.phys + '</span>';
 }
-
 function fmtBF(bf, scale) {
   if (!bf) return '—';
   if (scale === 'both') return '<span style="font-size:11px;font-family:var(--font-mono)">' + bf.doyle + '<br>' + bf.scribner + '</span>';
@@ -252,48 +310,59 @@ function fmtBF(bf, scale) {
 
 function renderLogs() {
   const c = document.getElementById('logList');
-  if (state.logs.length === 0) { c.innerHTML = '<div class="empty-state">No logs entered yet.<br>Switch to Entry to begin.</div>'; return; }
+  if (state.logs.length === 0) { c.innerHTML = '<div class="empty-state">No logs entered yet.<br>Tap Entry to begin.</div>'; return; }
   const isBoth = state.scale === 'both';
-  const cols = isBoth ? '52px 1fr 1fr 70px' : '52px 1fr 1fr 56px';
-  let html = '<div class="log-header-row" style="grid-template-columns:' + cols + '"><span>Tag</span><span style="text-align:center">Length</span><span style="text-align:center">Diam</span>' + (isBoth ? '<span>D / S BF</span>' : '<span>BF</span>') + '</div>';
+  const cols = isBoth ? '46px 1fr 1fr 60px 50px' : '46px 1fr 1fr 52px 46px';
+  const bfHdr = isBoth ? '<span>D/S BF</span>' : '<span>BF</span>';
+  let html = '<div class="log-header-row" style="grid-template-columns:' + cols + '"><span>Tag</span><span style="text-align:center">Len</span><span style="text-align:center">Dia</span>' + bfHdr + '<span>m³</span></div>';
   let lastSeries = null;
-  state.logs.slice().reverse().forEach(log => {
+  state.logs.forEach(log => {
     if (lastSeries !== null && log.series !== lastSeries) html += '<div class="series-divider">— Series Change —</div>';
     lastSeries = log.series;
-    html += '<div class="log-item" style="grid-template-columns:' + cols + '" onclick="openEditModal(' + log.id + ')"><div class="log-tag">' + log.tag + '</div><div class="log-cell">' + fmtCell(log.length) + '</div><div class="log-cell">' + fmtCell(log.diameter) + '</div><div class="log-ft">' + fmtBF(log.bf, log.scale) + '</div></div>';
+    const m3 = bfToM3(primaryBF(log.bf));
+    html += '<div class="log-item" style="grid-template-columns:' + cols + '" onclick="openEditModal(' + log.id + ')"><div class="log-tag">' + log.tag + '</div><div class="log-cell">' + fmtCell(log.length) + '</div><div class="log-cell">' + fmtCell(log.diameter) + '</div><div class="log-ft">' + fmtBF(log.bf, log.scale) + '</div><div class="log-m3">' + (m3 != null ? m3.toFixed(3) : '—') + '</div></div>';
   });
   c.innerHTML = html;
 }
 
 function renderSummary() {
-  const buckets = { '6–9': {c:0,d:0,s:0}, '10–13': {c:0,d:0,s:0}, '14–17': {c:0,d:0,s:0}, '18–21': {c:0,d:0,s:0}, '22+': {c:0,d:0,s:0} };
-  function diamBucket(n) { if (n < 10) return '6–9'; if (n < 14) return '10–13'; if (n < 18) return '14–17'; if (n < 22) return '18–21'; return '22+'; }
-  state.logs.forEach(log => { const dp = parseField(log.diameter); if (!dp) return; const k = diamBucket(dp.cut); buckets[k].c++; buckets[k].d += log.bf?.doyle || 0; buckets[k].s += log.bf?.scribner || 0; });
+  const buckets = { '6–9':{c:0,d:0,s:0}, '10–13':{c:0,d:0,s:0}, '14–17':{c:0,d:0,s:0}, '18–21':{c:0,d:0,s:0}, '22+':{c:0,d:0,s:0} };
+  function diamBucket(n) { if (n<10) return '6–9'; if (n<14) return '10–13'; if (n<18) return '14–17'; if (n<22) return '18–21'; return '22+'; }
+  state.logs.forEach(log => { const dp = parseField(log.diameter); if (!dp) return; const k = diamBucket(dp.cut); buckets[k].c++; buckets[k].d += log.bf?.doyle||0; buckets[k].s += log.bf?.scribner||0; });
   const isBoth = state.scale === 'both';
-  document.getElementById('summaryHeaderBF').innerHTML = isBoth ? '<th style="text-align:right">Doyle</th><th style="text-align:right">Scribner</th>' : 'Board Ft';
-  let html = '', tc = 0, td = 0, ts = 0;
+  document.getElementById('summaryHeaderBF').innerHTML = isBoth ? '<th style="text-align:right">Doyle</th><th style="text-align:right">Scrib</th><th style="text-align:right">m³</th>' : 'BF';
+  let html = '', tc=0, td=0, ts=0;
   Object.entries(buckets).forEach(([range, d]) => {
-    if (!d.c) return; tc += d.c; td += d.d; ts += d.s;
-    const bfCells = isBoth ? '<td>' + d.d.toLocaleString() + '</td><td>' + d.s.toLocaleString() + '</td>' : '<td>' + (state.scale === 'scribner' ? d.s : d.d).toLocaleString() + '</td>';
-    html += '<tr><td>' + range + '"</td><td>' + d.c + '</td>' + bfCells + '</tr>';
+    if (!d.c) return; tc+=d.c; td+=d.d; ts+=d.s;
+    const bf4 = state.scale==='scribner' ? d.s : d.d;
+    const m3 = bfToM3(bf4);
+    const bfCells = isBoth
+      ? '<td>'+d.d.toLocaleString()+'</td><td>'+d.s.toLocaleString()+'</td><td>'+(bfToM3(d.d)||0).toFixed(2)+'</td>'
+      : '<td>'+bf4.toLocaleString()+'</td>';
+    const m3Cell = isBoth ? '' : '<td>'+(m3!=null?m3.toFixed(2):'—')+'</td>';
+    html += '<tr><td>'+range+'"</td><td>'+d.c+'</td>'+bfCells+m3Cell+'</tr>';
   });
-  if (tc) { const totalBF = isBoth ? '<td>' + td.toLocaleString() + '</td><td>' + ts.toLocaleString() + '</td>' : '<td>' + (state.scale === 'scribner' ? ts : td).toLocaleString() + '</td>'; html += '<tr class="total-row"><td>Total</td><td>' + tc + '</td>' + totalBF + '</tr>'; }
-  else html = '<tr><td colspan="5" style="color:var(--moss-bright);text-align:center;padding:20px;font-size:13px;">No data yet</td></tr>';
+  if (tc) {
+    const bf4 = state.scale==='scribner' ? ts : td;
+    const totalBFCells = isBoth
+      ? '<td>'+td.toLocaleString()+'</td><td>'+ts.toLocaleString()+'</td><td>'+(bfToM3(td)||0).toFixed(2)+'</td>'
+      : '<td>'+bf4.toLocaleString()+'</td>';
+    const totalM3Cell = isBoth ? '' : '<td>'+(bfToM3(bf4)||0).toFixed(2)+'</td>';
+    html += '<tr class="total-row"><td>Total</td><td>'+tc+'</td>'+totalBFCells+totalM3Cell+'</tr>';
+  } else {
+    html = '<tr><td colspan="6" style="color:var(--moss-bright);text-align:center;padding:20px;font-size:13px;">No data yet</td></tr>';
+  }
   document.getElementById('summaryBody').innerHTML = html;
 }
 
 function setupSpeech() {
   Speech.setup(
-    (transcript, isFinal) => {
-      document.getElementById('transcriptBox').textContent = transcript;
-      if (!isFinal) return;
-      handleSpeechCommand(Speech.parse(transcript));
-    },
+    (transcript, isFinal) => { document.getElementById('transcriptBox').textContent = transcript; if (!isFinal) return; handleSpeechCommand(Speech.parse(transcript)); },
     (status) => {
       const btn = document.getElementById('micBtn'), lbl = document.getElementById('micLabel');
-      if (status === 'listening') { btn.classList.add('listening'); lbl.textContent = '🔴  Listening...'; document.getElementById('transcriptBox').textContent = '...'; }
-      else if (status === 'unavailable') { btn.disabled = true; lbl.textContent = '🎤 Not Available'; }
-      else { btn.classList.remove('listening'); lbl.textContent = '🎤 Tap to Speak'; }
+      if (status==='listening') { btn.classList.add('listening'); lbl.textContent='🔴 Listening...'; document.getElementById('transcriptBox').textContent='...'; }
+      else if (status==='unavailable') { btn.disabled=true; lbl.textContent='🎙️ Not Available'; }
+      else { btn.classList.remove('listening'); lbl.textContent='🎙️ Tap to Speak'; }
     }
   );
 }
@@ -302,54 +371,60 @@ function handleSpeechCommand(cmd) {
   switch (cmd.cmd) {
     case 'save': saveLog(); break;
     case 'skip': skipTag(); break;
-    case 'tallyName': state.tallyName = cmd.value; saveState(); updateHeader(); toast('Load: ' + state.tallyName, 'success'); break;
-    case 'newSeries': state.nextTag = cmd.value; state.currentSeries++; saveState(); updateHeader(); toast('New series: ' + state.nextTag, 'success'); break;
+    case 'tallyName': state.tallyName = cmd.value; saveState(); updateHeader(); toast('Load: '+state.tallyName,'success'); break;
+    case 'newSeries': state.nextTag = cmd.value; state.currentSeries++; saveState(); updateHeader(); toast('New series: '+state.nextTag,'success'); break;
     case 'newSeriesPrompt': openSeriesModal(); break;
     case 'measurements':
-      if (cmd.length) { document.getElementById('fLength').value = cmd.length; onFieldInput(document.getElementById('fLength'), 'hLength'); }
-      if (cmd.diameter) { document.getElementById('fDiameter').value = cmd.diameter; onFieldInput(document.getElementById('fDiameter'), 'hDiameter'); }
+      if (cmd.length)   { document.getElementById('fLength').value=cmd.length; onFieldInput(document.getElementById('fLength'),'hLength'); }
+      if (cmd.diameter) { document.getElementById('fDiameter').value=cmd.diameter; onFieldInput(document.getElementById('fDiameter'),'hDiameter'); }
       if (!cmd.diameter) toast('Got length — speak diameter or enter manually');
       break;
-    default: toast('Could not parse — try again', 'error');
+    default: toast('Could not parse — try again','error');
   }
 }
 
 function exportCSV() {
-  if (!state.logs.length) { toast('No logs to export', 'error'); return; }
-  const isBoth = state.scale === 'both';
-  let csv = '#,Tag #,Length (original),Diameter (original),Length (cutback),Diameter (cutback)' + (isBoth ? ',Doyle BF,Scribner BF' : ',Board Feet (' + (state.scale || 'BF') + ')') + '\n';
-  state.logs.forEach(log => { csv += log.rowNum + ',' + log.tag + ',' + log.length + ',' + log.diameter + ',' + log.lengthCut + ',' + log.diameterCut + (isBoth ? ',' + (log.bf?.doyle || '') + ',' + (log.bf?.scribner || '') : ',' + (primaryBF(log.bf) || '')) + '\n'; });
-  dlFile(csv, (state.tallyName || 'log-tally').replace(/\s+/g, '_') + '.csv', 'text/csv');
-  toast('CSV exported', 'success');
+  if (!state.logs.length) { toast('No logs to export','error'); return; }
+  const isBoth = state.scale==='both';
+  let csv = '#,Tag #,Length (original),Diameter (original),Length (cutback),Diameter (cutback)' + (isBoth?',Doyle BF,Scribner BF,m3 (Doyle)' : ',Board Feet ('+(state.scale||'BF')+'),m3') + '\n';
+  state.logs.forEach(log => {
+    const pbf = primaryBF(log.bf);
+    csv += log.rowNum+','+log.tag+','+log.length+','+log.diameter+','+log.lengthCut+','+log.diameterCut;
+    if (isBoth) csv += ','+(log.bf?.doyle||'')+','+(log.bf?.scribner||'')+','+(bfToM3(log.bf?.doyle)||'');
+    else csv += ','+(pbf||'')+','+(bfToM3(pbf)||'');
+    csv += '\n';
+  });
+  dlFile(csv,(state.tallyName||'log-tally').replace(/\s+/g,'_')+'.csv','text/csv');
+  toast('CSV exported','success');
 }
-function exportJSON() { dlFile(JSON.stringify(state, null, 2), (state.tallyName || 'log-tally').replace(/\s+/g, '_') + '_backup.json', 'application/json'); toast('Backup saved', 'success'); }
+function exportJSON() { dlFile(JSON.stringify(state,null,2),(state.tallyName||'log-tally').replace(/\s+/g,'_')+'_backup.json','application/json'); toast('Backup saved','success'); }
 function handleImport(e) {
-  const file = e.target.files[0]; if (!file) return;
-  const r = new FileReader();
-  r.onload = (ev) => { try { const d = JSON.parse(ev.target.result); if (!d.logs) throw new Error(); state = d; saveState(); updateHeader(); toast('Restored ' + state.logs.length + ' logs', 'success'); } catch { toast('Invalid backup file', 'error'); } };
-  r.readAsText(file); e.target.value = '';
+  const file=e.target.files[0]; if(!file) return;
+  const r=new FileReader();
+  r.onload=(ev)=>{ try { const d=JSON.parse(ev.target.result); if(!d.logs) throw new Error(); state=d; saveState(); updateHeader(); toast('Restored '+state.logs.length+' logs','success'); } catch { toast('Invalid backup file','error'); } };
+  r.readAsText(file); e.target.value='';
 }
-function dlFile(content, filename, type) { const blob = new Blob([content], {type}), url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url); }
+function dlFile(content,filename,type) { const blob=new Blob([content],{type}),url=URL.createObjectURL(blob),a=document.createElement('a'); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url); }
 function confirmClearAll() {
   if (!confirm('Export a backup first?\n\nOK = export then clear\nCancel = just clear')) { if (!confirm('Clear all data? This cannot be undone.')) return; clearAll(); return; }
-  exportJSON(); setTimeout(clearAll, 500);
+  exportJSON(); setTimeout(clearAll,500);
 }
 function clearAll() {
-  state = { tallyName: '', scale: null, nextTag: null, currentSeries: 0, logs: [], spreadsheetId: null };
-  tagPrefix = ''; tagNumLength = 5;
+  state={tallyName:'',scale:null,nextTag:null,currentSeries:0,logs:[],spreadsheetId:null};
+  tagPrefix=''; tagNumLength=5;
   saveState(); updateHeader(); clearFields();
-  if (currentMode === 'keypad') Keypad.reset();
+  if (currentMode==='keypad') Keypad.reset();
   toast('Cleared — ready for new load');
 }
 
-function updateOnline() { document.getElementById('offlineBadge').classList.toggle('show', !navigator.onLine); }
-window.addEventListener('online', updateOnline);
-window.addEventListener('offline', updateOnline);
+function updateOnline() { document.getElementById('offlineBadge').classList.toggle('show',!navigator.onLine); }
+window.addEventListener('online',updateOnline);
+window.addEventListener('offline',updateOnline);
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded',()=>{
   loadState(); updateHeader(); setupSpeech(); updateOnline(); Sheets.init();
   switchMode('keypad');
-  document.querySelectorAll('.modal-bg').forEach(bg => bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('show'); }));
-  document.getElementById('seriesInput').addEventListener('keydown', e => { if (e.key === 'Enter') confirmNewSeries(); });
-  document.getElementById('tallyInput').addEventListener('keydown', e => { if (e.key === 'Enter') confirmTallyName(); });
+  document.querySelectorAll('.modal-bg').forEach(bg=>bg.addEventListener('click',e=>{if(e.target===bg)bg.classList.remove('show');}));
+  document.getElementById('seriesInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmNewSeries();});
+  document.getElementById('tallyInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmTallyName();});
 });
