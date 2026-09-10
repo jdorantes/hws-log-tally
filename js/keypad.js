@@ -12,6 +12,11 @@ const Keypad = (() => {
     const bfPreview = computeBFPreview();
     const totalBF = s.logs ? s.logs.reduce((acc, l) => acc + (window.primaryBF ? window.primaryBF(l.bf)||0 : 0), 0) : 0;
     const totalM3 = window.bfToM3 ? window.bfToM3(totalBF) : null;
+    const signedIn = window.Sheets && window.Sheets.isSignedIn && window.Sheets.isSignedIn();
+    const configured = window.Sheets && window.Sheets.isConfigured && window.Sheets.isConfigured();
+    const hasLogs = s.logs && s.logs.length > 0;
+    const lenPlaceholder = hasLogs ? '—' : '10/9';
+    const diaPlaceholder = hasLogs ? '—' : '15/13';
 
     panel.innerHTML = `
       <div class="kp-wrapper">
@@ -19,14 +24,15 @@ const Keypad = (() => {
           <div class="kp-tag-label">TAG</div>
           <div class="kp-tag-val" id="kpTagVal">${getTagDisplay()}</div>
           <div class="kp-tag-actions">
-            <button class="kp-tag-btn" onclick="Keypad.openTagModal()">＋</button>
+            <button class="kp-tag-btn" onclick="Keypad.openTagModal()">+</button>
             <button class="kp-tag-btn" onclick="Keypad.skipTag()">SKIP</button>
           </div>
         </div>
-        <div class="kp-stats-strip">
+        <div class="kp-stats-strip" style="grid-template-columns:${configured ? 'repeat(4,1fr)' : 'repeat(3,1fr)'}">
           <div class="kp-stat"><span class="kp-stat-val">${s.logs ? s.logs.length : 0}</span><span class="kp-stat-lbl">LOGS</span></div>
           <div class="kp-stat"><span class="kp-stat-val">${totalBF >= 1000 ? (totalBF/1000).toFixed(1)+'k' : totalBF}</span><span class="kp-stat-lbl">BF</span></div>
           <div class="kp-stat"><span class="kp-stat-val">${totalM3 != null ? totalM3.toFixed(1) : '—'}</span><span class="kp-stat-lbl">m³</span></div>
+          ${configured ? '<div class="kp-stat kp-stat-sync' + (signedIn ? ' kp-stat-synced' : '') + '" onclick="' + (signedIn ? '' : 'Sheets.signIn()') + '" style="cursor:' + (signedIn ? 'default' : 'pointer') + '"><span class="kp-stat-val" style="font-size:16px">' + (signedIn ? '☁✓' : '☁') + '</span><span class="kp-stat-lbl">' + (signedIn ? 'SYNCED' : 'SIGN IN') + '</span></div>' : ''}
         </div>
         <div class="kp-fields">
           <div class="kp-field ${activeField==='length' ? 'kp-field-active' : ''}" onclick="Keypad.setActive('length')">
@@ -34,7 +40,7 @@ const Keypad = (() => {
               <div class="kp-field-label">LENGTH</div>
               ${values.length ? '<button class="kp-clr-btn" onclick="event.stopPropagation();Keypad.clrField(\'length\')">CLR</button>' : ''}
             </div>
-            <div class="kp-field-val">${formatFieldDisplay('length')}</div>
+            <div class="kp-field-val">${formatFieldDisplay('length', lenPlaceholder)}</div>
             ${getCutbackHint('length')}
           </div>
           <div class="kp-field ${activeField==='diameter' ? 'kp-field-active' : ''}" onclick="Keypad.setActive('diameter')">
@@ -42,7 +48,7 @@ const Keypad = (() => {
               <div class="kp-field-label">DIAMETER</div>
               ${values.diameter ? '<button class="kp-clr-btn" onclick="event.stopPropagation();Keypad.clrField(\'diameter\')">CLR</button>' : ''}
             </div>
-            <div class="kp-field-val">${formatFieldDisplay('diameter')}</div>
+            <div class="kp-field-val">${formatFieldDisplay('diameter', diaPlaceholder)}</div>
             ${getCutbackHint('diameter')}
           </div>
         </div>
@@ -97,9 +103,9 @@ const Keypad = (() => {
     setupLongPress(document.getElementById('kpTagVal'), () => Keypad.openTagModal());
   }
 
-  function formatFieldDisplay(field) {
+  function formatFieldDisplay(field, placeholder) {
     const v = values[field];
-    if (!v) return '<span class="kp-placeholder">—</span>';
+    if (!v) return '<span class="kp-placeholder">' + placeholder + '</span>';
     return '<span class="' + (v.includes('/') ? 'kp-val-cut' : '') + '">' + v + '</span>';
   }
   function getCutbackHint(field) {
@@ -131,8 +137,7 @@ const Keypad = (() => {
     const v = values[activeField];
     if (char==='/' && v.includes('/')) return;
     if (char==='/' && v==='') return;
-    values[activeField] = v + char;
-    render();
+    values[activeField] = v + char; render();
   }
   function del() { values[activeField] = values[activeField].slice(0,-1); render(); }
   function clrField(field) { values[field] = ''; activeField = field; render(); }
@@ -140,8 +145,7 @@ const Keypad = (() => {
   function next() {
     if (!values.length || !values.diameter) {
       if (window.toast) window.toast('Enter both length and diameter','error');
-      activeField = !values.length ? 'length' : 'diameter';
-      render(); return;
+      activeField = !values.length ? 'length' : 'diameter'; render(); return;
     }
     if (window.saveLogFromKeypad) {
       const ok = window.saveLogFromKeypad(values.length, values.diameter);
@@ -152,12 +156,7 @@ const Keypad = (() => {
   function setAutoAdvance(val) { autoAdvance=val; }
   function skipTag() { if (window.skipTag) window.skipTag(); render(); }
 
-  function openTagModal() {
-    tagPrefix='';
-    document.getElementById('kpTagModal').classList.add('show');
-    document.getElementById('kpSeriesNum').value='';
-    updateAlphaPreview();
-  }
+  function openTagModal() { tagPrefix=''; document.getElementById('kpTagModal').classList.add('show'); document.getElementById('kpSeriesNum').value=''; updateAlphaPreview(); }
   function closeTagModal() { document.getElementById('kpTagModal').classList.remove('show'); }
   function confirmTagSeries() {
     const numVal = document.getElementById('kpSeriesNum').value.trim();
@@ -177,7 +176,6 @@ const Keypad = (() => {
   }
   function toggleLetter(l) { tagPrefix = tagPrefix.endsWith(l) ? tagPrefix.slice(0,-1) : tagPrefix+l; buildAlphaGrid(); updateAlphaPreview(); }
   function updateAlphaPreview() { const el=document.getElementById('kpAlphaPreview'); if(el) el.textContent = tagPrefix ? 'Prefix: "'+tagPrefix+'"' : 'No prefix — numeric only'; }
-
   function setupLongPress(el, callback) {
     if (!el) return;
     let timer;
