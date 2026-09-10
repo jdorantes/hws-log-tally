@@ -152,3 +152,5 @@ const Sheets = (() => {
 
   return { init: init, signIn: signIn, signOut: signOut, createSpreadsheet: createSpreadsheet, syncLog: syncLog, updateSyncUI: updateSyncUI, isSignedIn: function() { return isSignedIn; }, isConfigured: isConfigured };
 })();
+
+window.Sheets = Sheets;
