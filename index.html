@@ -33,19 +33,22 @@
   </div>
   <div class="panel active" id="panel-entry">
     <div class="mode-toggle">
-      <button class="mode-btn mode-active" id="modeKeypadBtn" onclick="switchMode('keypad')">⌨ &nbsp;Keypad</button>
-      <button class="mode-btn" id="modeVoiceBtn" onclick="switchMode('voice')">🎤 &nbsp;Voice</button>
+      <button class="mode-btn mode-active" id="modeKeypadBtn" onclick="switchMode('keypad')">⌨  Keypad</button>
+      <button class="mode-btn" id="modeVoiceBtn" onclick="switchMode('voice')">🎙️  Voice</button>
     </div>
     <div id="keypadEntryPanel"><div id="panel-keypad"></div></div>
     <div id="voiceEntryPanel" style="display:none">
-      <div class="tag-row">
-        <div class="tag-label">Next Tag</div>
-        <div class="tag-val" id="nextTagDisplay">—</div>
-        <div class="tag-controls">
-          <button class="btn-sm" onclick="openSeriesModal()">New Series</button>
-          <button class="btn-sm" onclick="skipTag()">Skip</button>
+
+      <!-- Shared tag row — same style as keypad -->
+      <div class="kp-tag-row" style="margin-bottom:12px">
+        <div class="kp-tag-label">TAG</div>
+        <div class="kp-tag-val" id="nextTagDisplay">—</div>
+        <div class="kp-tag-actions">
+          <button class="kp-tag-btn" onclick="openSeriesModal()">＋</button>
+          <button class="kp-tag-btn" onclick="skipTag()">SKIP</button>
         </div>
       </div>
+
       <div class="fields">
         <div><div class="field-label">Length</div><input class="field-input" id="fLength" placeholder="10/9" inputmode="decimal" oninput="onFieldInput(this,'hLength')"></div>
         <div><div class="field-label">Diameter</div><input class="field-input" id="fDiameter" placeholder="15/13" inputmode="decimal" oninput="onFieldInput(this,'hDiameter')"></div>
@@ -63,7 +66,7 @@
         <strong style="color:var(--canopy)">"save"</strong> · <strong style="color:var(--canopy)">"skip"</strong> · <strong style="color:var(--canopy)">"tally name Coldwater 633"</strong><br>
         <strong style="color:var(--canopy)">"new series 72400"</strong>
       </div>
-      <button class="mic-btn" id="micBtn" onclick="Speech.toggle()"><span id="micLabel">🎤 &nbsp;TAP TO SPEAK</span></button>
+      <button class="mic-btn" id="micBtn" onclick="Speech.toggle()"><span id="micLabel">🎙️  TAP TO SPEAK</span></button>
       <div class="transcript-box" id="transcriptBox">Tap mic and speak measurements or commands</div>
       <div class="action-row">
         <button class="btn-save" id="saveBtn" onclick="saveLog()" disabled>SAVE LOG</button>
