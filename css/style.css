@@ -175,3 +175,62 @@ body { background: var(--pine-darkest); color: var(--white); font-family: var(--
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.success { background: var(--moss); border-color: var(--canopy); }
 .toast.error { background: var(--red); border-color: var(--red-bright); }
+
+
+/* ─── BOTTOM NAV ──────────────────────────────────────────────────────────── */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  max-width: 430px; margin: 0 auto;
+  display: flex; background: var(--pine-dark);
+  border-top: 1px solid var(--pine-border);
+  z-index: 150; padding-bottom: env(safe-area-inset-bottom);
+}
+.nav-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  padding: 9px 4px 7px; background: transparent; border: none; cursor: pointer;
+  color: var(--moss-bright); font-family: var(--font-ui); transition: color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.nav-btn.nav-active { color: var(--canopy); }
+.nav-btn:active { color: var(--leaf); }
+.nav-icon { font-size: 18px; line-height: 1; margin-bottom: 2px; }
+.nav-lbl { font-size: 9px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+.app { padding-bottom: 60px; }
+
+/* ─── KEYPAD STATS STRIP ──────────────────────────────────────────────────── */
+.kp-stats-strip {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 6px; margin-bottom: 2px;
+}
+.kp-stat {
+  background: var(--pine-surface); border: 1px solid var(--pine-border);
+  border-radius: var(--r-md); padding: 6px 4px; text-align: center;
+  display: flex; flex-direction: column; align-items: center;
+}
+.kp-stat-val {
+  font-family: var(--font-mono); font-size: 18px; font-weight: 600;
+  color: var(--canopy); line-height: 1;
+}
+.kp-stat-lbl {
+  font-size: 8px; color: var(--moss-bright); letter-spacing: 1px;
+  text-transform: uppercase; font-weight: 600; margin-top: 2px;
+}
+
+/* ─── CLR BUTTON ──────────────────────────────────────────────────────────── */
+.kp-field-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 4px;
+}
+.kp-clr-btn {
+  background: var(--pine-border); color: var(--leaf);
+  border: none; border-radius: 4px; padding: 2px 7px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+  cursor: pointer; font-family: var(--font-ui); text-transform: uppercase;
+}
+.kp-clr-btn:active { background: var(--red); color: white; }
+
+/* ─── LOG m³ COLUMN ───────────────────────────────────────────────────────── */
+.log-m3 {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  color: var(--leaf); text-align: right;
+}
