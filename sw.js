@@ -1,5 +1,5 @@
 // ─── LOG TALLY SERVICE WORKER ─────────────────────────────────────────────────
-const CACHE_NAME = 'log-tally-v3';
+const CACHE_NAME = 'log-tally-v4';
 const APP_SHELL = [
   '/',
   '/index.html',

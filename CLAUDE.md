@@ -125,9 +125,9 @@ Key classes: `.kp-wrapper`, `.kp-stats-strip`, `.kp-tag-row`, `.kp-field`, `.kp-
 
 ## Service Worker
 
-`sw.js` — cache-first strategy. **Bump `CACHE_NAME` version (e.g. `log-tally-v3` → `v4`) with every deploy** so iOS picks up new files automatically. Google API calls always bypass cache.
+`sw.js` — cache-first strategy. **Bump `CACHE_NAME` version (e.g. `log-tally-v4` → `v5`) with every deploy** so iOS picks up new files automatically. Google API calls always bypass cache.
 
-Current version: `log-tally-v3`
+Current version: `log-tally-v4`
 
 ---
 
@@ -164,12 +164,18 @@ Logs render chronologically (first at top, newest at bottom). Tap a log to edit/
 
 ## Tally → Spreadsheet Flow
 
-1. User sets tally name → `confirmTallyName()` → if signed in + no sheet yet → `Sheets.createSpreadsheet(name, scale)`
-2. Sheet created in Drive folder `18JCXP6V0OLNfXLQGXQo6hkV7AHjIWZ4_` → year subfolder
-3. `state.spreadsheetId` saved to localStorage
-4. Each log save → `syncAfterSave(log)` → `Sheets.syncLog(id, [log])`
-5. If offline → enqueued in localStorage → flushed on reconnect
-6. Tally name in header becomes hyperlink to Sheet once `spreadsheetId` exists
+1. User sets tally name → `confirmTallyName()` → if signed in + no sheet yet → `Sheets.findExisting(name)` checks Drive for a spreadsheet this app already created with the exact same title
+2. **No match** → `createAndAttachSpreadsheet(name)` → `Sheets.createNewSpreadsheet(name, scale)` creates a fresh sheet
+3. **Match found** → `openExistingSheetModal(found)` shows the "Existing Load Found" modal (`existingSheetModal`) and waits on `resolveExistingSheet(action)`:
+   - `append` — reuse the found sheet as-is, keep its existing rows
+   - `rewrite` — reuse the found sheet but `Sheets.clearSpreadsheetData(id)` first (clears `Tally!A2:Z`, keeps the header row)
+   - `new` — ignore the match, calls `createAndAttachSpreadsheet(name)` to make a separate new sheet
+   - Cancel — does nothing; `state.spreadsheetId` stays unset, so the next log save falls through to `syncAfterSave()`'s own auto find-or-create (silently resumes the match — no prompt from a background sync)
+4. New sheets are created in Drive folder `18JCXP6V0OLNfXLQGXQo6hkV7AHjIWZ4_` → year subfolder
+5. `state.spreadsheetId` saved to localStorage
+6. Each log save → `syncAfterSave(log)` → if no `spreadsheetId` yet, `Sheets.createSpreadsheet(name, scale)` (the silent auto find-or-create variant — no modal, since this runs in the background off a log save, not an explicit name confirmation) → then `Sheets.syncLog(id, [log])`
+7. If offline → enqueued in localStorage → flushed on reconnect
+8. Tally name in header becomes hyperlink to Sheet (via `Sheets.sheetsUrl(id)`) once `spreadsheetId` exists
 
 ---
 
@@ -182,6 +188,9 @@ Logs render chronologically (first at top, newest at bottom). Tap a log to edit/
 - Service worker path `/sw.js` is registered at root — works because GitHub Pages serves from root for this repo
 - The `panel-keypad` div is rendered by `Keypad.render()` not in static HTML — modals injected by keypad (`kpTagModal`) are inside that div
 - Keypad uses `id="kpTagVal"` for the tag value display, updated inside `Keypad.render()`
+- `Sheets.sheetsUrl(id)` must stay exposed on the returned `Sheets` object — `app.js` calls it from `updateHeader()` and `shareTallyLink()`; if it's ever missing, `updateHeader()` throws mid-function and `confirmTallyName()` never reaches `closeModal('tallyModal')`, so the Load Name modal looks stuck open after Save (this exact bug shipped once — fixed by adding `sheetsUrl`)
+- `window.updateHeader` is exposed specifically so `sheets.js` can refresh the header/keypad ☁ indicator immediately after sign-in, sign-out, or a detected expired token — don't remove it without replacing that call
+- `gapi()` in sheets.js treats a 401 response as an expired/invalid token: it resets `isSignedIn = false` so the UI naturally falls back to "Sign in to Sheets" instead of silently queuing failed syncs forever
 
 ---
 
@@ -212,11 +221,15 @@ No build step, no npm, no bundler. Pure vanilla JS.
 - m³ column in Logs and Summary views
 - Service worker for offline use
 - CSV and JSON export
+- Reopening a half-finished load by re-entering its tally name — prompts Append / Rewrite / Create New when a same-name spreadsheet is found
 
 ## Current State / Recent Fixes
 - Fixed duplicate event listeners on kpTagVal causing phantom tag skips
 - Fixed render guard (_rendering flag) preventing double saves
 - Fixed Sheets not on window (was module-scoped, now window.Sheets = Sheets)
-- Service worker bumped to v3 to force iOS cache refresh
+- Service worker bumped to v4 to force iOS cache refresh
 - Stats strip order: Logs / BF / m³ / ☁ (sign-in)
 - Removed Voice/speech input mode — Keypad is now the only entry mode (speech.js deleted, voice entry panel and mode toggle removed from index.html)
+- Fixed Load Name modal getting stuck open after Save — `Sheets.sheetsUrl()` was called but never defined/exposed, throwing inside `updateHeader()` and aborting `confirmTallyName()` before `closeModal()` ran
+- `createSpreadsheet()` now checks Drive for an existing sheet with the same title before creating one, so a half-finished load can be resumed by name instead of spawning a duplicate spreadsheet
+- Sign-in state now refreshes the header/keypad UI immediately (`window.updateHeader`), and an expired/invalid token (401) resets `isSignedIn` instead of silently queuing failed syncs forever

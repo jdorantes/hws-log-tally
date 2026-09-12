@@ -138,13 +138,46 @@ function setScale(scale) {
 
 function openTallyModal() { document.getElementById('tallyInput').value = state.tallyName; document.getElementById('tallyModal').classList.add('show'); setTimeout(() => document.getElementById('tallyInput').focus(), 120); }
 async function confirmTallyName() {
-  state.tallyName = document.getElementById('tallyInput').value.trim();
-  if (Sheets.isSignedIn() && !state.spreadsheetId && state.tallyName) {
-    toast('Creating spreadsheet...');
-    const id = await Sheets.createSpreadsheet(state.tallyName, state.scale || 'doyle');
-    if (id) { state.spreadsheetId = id; toast('Spreadsheet created!', 'success'); }
-  }
+  const name = document.getElementById('tallyInput').value.trim();
+  state.tallyName = name;
   saveState(); updateHeader(); closeModal('tallyModal');
+  if (!Sheets.isSignedIn() || state.spreadsheetId || !name) return;
+  toast('Checking for existing spreadsheet...');
+  const found = await Sheets.findExisting(name);
+  if (found) { openExistingSheetModal(found); return; }
+  await createAndAttachSpreadsheet(name);
+}
+
+async function createAndAttachSpreadsheet(name) {
+  const result = await Sheets.createNewSpreadsheet(name, state.scale || 'doyle');
+  if (result) { state.spreadsheetId = result.id; saveState(); updateHeader(); toast('Spreadsheet created!', 'success'); }
+}
+
+let pendingExistingSheet = null;
+
+function openExistingSheetModal(found) {
+  pendingExistingSheet = found;
+  document.getElementById('existingSheetName').textContent = found.name;
+  document.getElementById('existingSheetDate').textContent = found.modifiedTime ? new Date(found.modifiedTime).toLocaleDateString() : 'recently';
+  document.getElementById('existingSheetModal').classList.add('show');
+}
+
+async function resolveExistingSheet(action) {
+  const found = pendingExistingSheet;
+  pendingExistingSheet = null;
+  closeModal('existingSheetModal');
+  if (!found) return;
+  if (action === 'append') {
+    state.spreadsheetId = found.id; saveState(); updateHeader();
+    toast('Resumed existing spreadsheet', 'success');
+  } else if (action === 'rewrite') {
+    toast('Clearing existing spreadsheet...');
+    const ok = await Sheets.clearSpreadsheetData(found.id);
+    state.spreadsheetId = found.id; saveState(); updateHeader();
+    toast(ok ? 'Spreadsheet cleared — starting fresh' : 'Could not clear — appending instead', ok ? 'success' : 'error');
+  } else if (action === 'new') {
+    await createAndAttachSpreadsheet(state.tallyName);
+  }
 }
 
 function shareTallyLink() {
@@ -155,11 +188,12 @@ function shareTallyLink() {
   else { navigator.clipboard.writeText(url).then(() => toast('Link copied!', 'success')); }
 }
 
-window.appState = () => state;
-window.calcBF   = calcBF;
-window.bfToM3   = bfToM3;
-window.toast    = toast;
-window.navTo    = navTo;
+window.appState     = () => state;
+window.calcBF       = calcBF;
+window.bfToM3       = bfToM3;
+window.toast        = toast;
+window.navTo        = navTo;
+window.updateHeader = updateHeader; // lets sheets.js refresh the header/keypad UI when auth state changes
 
 window.setNextTag = function(fullTag, prefix, startNum, numLen) {
   tagPrefix = prefix || ''; tagNumLength = numLen || 5;
@@ -186,8 +220,8 @@ function syncAfterSave(log) {
   if (state.spreadsheetId || (Sheets.isSignedIn() && state.tallyName)) {
     (async () => {
       if (!state.spreadsheetId && Sheets.isSignedIn()) {
-        const id = await Sheets.createSpreadsheet(state.tallyName, state.scale);
-        if (id) { state.spreadsheetId = id; saveState(); updateHeader(); }
+        const result = await Sheets.createSpreadsheet(state.tallyName, state.scale);
+        if (result) { state.spreadsheetId = result.id; saveState(); updateHeader(); }
       }
       await Sheets.syncLog(state.spreadsheetId, [log]);
     })();

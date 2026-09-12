@@ -3,6 +3,11 @@ const Sheets = (() => {
     const SCOPES = ['https://www.googleapis.com/auth/drive.file'].join(' ');
   let tokenClient = null, accessToken = null, isSignedIn = false;
 
+  // Refresh the header/keypad UI whenever sign-in state changes out-of-band
+  // (OAuth callback, sign-out, expired-token detection) — otherwise the ☁
+  // indicator can lag until some unrelated re-render happens.
+  function notifyAuthChange() { if (window.updateHeader) window.updateHeader(); }
+
   function init() {
     if (!isConfigured()) { updateSyncUI(); return; }
     waitForGoogle(() => {
@@ -10,7 +15,7 @@ const Sheets = (() => {
         client_id: CONFIG.GOOGLE_CLIENT_ID, scope: SCOPES,
         callback: (resp) => {
           if (resp.error) { console.error('[Sheets] OAuth error:', resp); return; }
-          accessToken = resp.access_token; isSignedIn = true; updateSyncUI(); flushQueue();
+          accessToken = resp.access_token; isSignedIn = true; updateSyncUI(); flushQueue(); notifyAuthChange();
         },
       });
       updateSyncUI();
@@ -31,17 +36,33 @@ const Sheets = (() => {
 
   function signOut() {
     if (accessToken) google.accounts.oauth2.revoke(accessToken);
-    accessToken = null; isSignedIn = false; updateSyncUI();
+    accessToken = null; isSignedIn = false; updateSyncUI(); notifyAuthChange();
   }
 
   function isConfigured() {
     return CONFIG.GOOGLE_CLIENT_ID && CONFIG.GOOGLE_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE';
   }
 
+  function sheetsUrl(spreadsheetId) {
+    return spreadsheetId ? 'https://docs.google.com/spreadsheets/d/' + spreadsheetId + '/edit' : '';
+  }
+
+  // Escape a value for use inside a Drive API `q=` string literal.
+  function escapeQ(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+
   async function findFolder(name, parentId) {
-    const q = "name='" + name + "' and mimeType='application/vnd.google-apps.folder' and '" + parentId + "' in parents and trashed=false";
+    const q = "name='" + escapeQ(name) + "' and mimeType='application/vnd.google-apps.folder' and '" + parentId + "' in parents and trashed=false";
     const res = await gapi('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) + '&fields=files(id,name)', 'GET');
     return (res && res.files && res.files.length > 0) ? res.files[0].id : null;
+  }
+
+  // Look for a spreadsheet this app already created with this exact title —
+  // lets a half-finished load (state lost/cleared) be reopened by re-entering
+  // its tally name instead of spawning a duplicate sheet.
+  async function findSpreadsheetByName(name) {
+    const q = "name='" + escapeQ(name) + "' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false";
+    const res = await gapi('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) + '&orderBy=modifiedTime desc&pageSize=1&fields=files(id,name,modifiedTime)', 'GET');
+    return (res && res.files && res.files.length > 0) ? res.files[0] : null;
   }
 
   async function createFolder(name, parentId) {
@@ -58,7 +79,16 @@ const Sheets = (() => {
     return id;
   }
 
-  async function createSpreadsheet(tallyName, scale) {
+  // Public lookup — lets a caller check for a same-name load up front and
+  // prompt the user (append / rewrite / create new) before touching Drive.
+  async function findExisting(tallyName) {
+    if (!isSignedIn) return null;
+    return await findSpreadsheetByName(tallyName || 'Log Tally');
+  }
+
+  // Always creates a brand new spreadsheet, regardless of any existing
+  // same-name sheet. Returns { id, existing:false } on success, null on failure.
+  async function createNewSpreadsheet(tallyName, scale) {
     if (!isSignedIn) return null;
     const title = tallyName || 'Log Tally';
     const headers = buildHeaders(scale);
@@ -75,7 +105,25 @@ const Sheets = (() => {
     for (const email of (CONFIG.COLLABORATORS || [])) {
       await gapi('https://www.googleapis.com/drive/v3/files/' + sid + '/permissions', 'POST', { role: 'writer', type: 'user', emailAddress: email });
     }
-    return sid;
+    return { id: sid, existing: false };
+  }
+
+  // Background/auto path (used when syncing a log with no spreadsheetId yet
+  // and no explicit user choice was made): silently resumes a same-name sheet
+  // if one exists, otherwise creates a new one. Returns { id, existing } or null.
+  async function createSpreadsheet(tallyName, scale) {
+    if (!isSignedIn) return null;
+    const found = await findSpreadsheetByName(tallyName || 'Log Tally');
+    if (found) return { id: found.id, existing: true };
+    return await createNewSpreadsheet(tallyName, scale);
+  }
+
+  // Clears all data rows (keeps the header row) — used for the "Rewrite"
+  // choice when resuming an existing same-name sheet.
+  async function clearSpreadsheetData(spreadsheetId) {
+    if (!isSignedIn || !spreadsheetId) return false;
+    const res = await gapi('https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + '/values/Tally!A2:Z:clear', 'POST', {});
+    return !!res;
   }
 
   function buildHeaders(scale) {
@@ -141,6 +189,13 @@ const Sheets = (() => {
   async function gapi(url, method, body) {
     try {
       const res = await fetch(url, { method: method, headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      if (res.status === 401) {
+        // Token expired/invalid — stop pretending we're signed in so the UI
+        // offers "Sign in to Sheets" again instead of silently failing syncs.
+        console.warn('[Sheets] Access token expired or invalid — signing out');
+        accessToken = null; isSignedIn = false; updateSyncUI(); notifyAuthChange();
+        return null;
+      }
       if (!res.ok) { const err = await res.json().catch(function() { return {}; }); console.error('[Sheets] API error:', res.status, err); return null; }
       if (method === 'PATCH') { const text = await res.text(); return text ? JSON.parse(text) : {}; }
       return await res.json();
@@ -150,7 +205,13 @@ const Sheets = (() => {
   window.addEventListener('online', function() { flushQueue(); updateSyncUI(); });
   window.addEventListener('offline', updateSyncUI);
 
-  return { init: init, signIn: signIn, signOut: signOut, createSpreadsheet: createSpreadsheet, syncLog: syncLog, updateSyncUI: updateSyncUI, isSignedIn: function() { return isSignedIn; }, isConfigured: isConfigured };
+  return {
+    init: init, signIn: signIn, signOut: signOut,
+    createSpreadsheet: createSpreadsheet, createNewSpreadsheet: createNewSpreadsheet,
+    findExisting: findExisting, clearSpreadsheetData: clearSpreadsheetData,
+    syncLog: syncLog, updateSyncUI: updateSyncUI, sheetsUrl: sheetsUrl,
+    isSignedIn: function() { return isSignedIn; }, isConfigured: isConfigured
+  };
 })();
 
 window.Sheets = Sheets;
