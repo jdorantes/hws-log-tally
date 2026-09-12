@@ -17,12 +17,11 @@ hws-log-tally/
 ├── index.html          Main app shell, bottom nav, modals
 ├── sw.js               Service worker (cache-first, bump CACHE_NAME version on deploy)
 ├── css/
-│   └── style.css       Forest theme — all styles here, ~236 lines + appended additions
+│   └── style.css       Forest theme — all styles here, ~210 lines + appended additions
 └── js/
     ├── config.js       Google credentials (CLIENT_ID, SHARED_FOLDER_ID, COLLABORATORS)
     ├── app.js          Core app logic, state management, render functions
     ├── keypad.js       Keypad UI module (self-contained, renders into #panel-keypad)
-    ├── speech.js       Speech recognition module
     └── sheets.js       Google Sheets + Drive API, OAuth, offline queue
 ```
 
@@ -44,11 +43,10 @@ let state = {
 State is persisted to `localStorage` under key `logTally_v3`.
 
 ### Modes
-- `keypad` — default, full-screen keypad, slim header, no sync bar
-- `voice` — speech input, full header visible
+- `keypad` — the only entry mode: full-screen keypad, slim header, no sync bar
 - `browse` — viewing Logs/Summary/Export tabs, full header
 
-`switchMode(mode)` handles transitions. `navTo(name)` handles bottom nav taps.
+Voice/speech input was removed (`speech.js` and the voice entry panel are gone). `enterEntryMode()` switches into keypad mode. `navTo(name)` handles bottom nav taps.
 
 ### Key Functions
 - `calcBF(length, diam, scale)` → `{doyle, scribner}` — Doyle: `((D-4)²×L)/16`, Scribner: `(0.79D²-2D-4)×L/16`
@@ -86,13 +84,11 @@ Exposed on `window`: `Keypad.render()`, `Keypad.reset()`, `Keypad.openTagModal()
 
 ---
 
-## UI Layout (Keypad Mode — default)
+## UI Layout (Keypad Mode — the only entry mode)
 
 ```
 [HWS · LOG TALLY]  [Scale]  [Tally Name ↗]   ← slim header (no stats, no sync bar)
 ──────────────────────────────────────────────
-[⌨ Keypad] [🎙️ Voice]                         ← mode toggle, Keypad is left/default
-
 [LOGS: 12] [BF: 4.2k] [m³: 9.9] [☁ SYNCED]  ← stats strip (4 cols if Sheets configured)
 [TAG: CW00042]  [＋]  [SKIP]                  ← tag row
 [LENGTH: 20/18]        [DIAMETER: 14]         ← field display with CLR button
@@ -105,21 +101,7 @@ Exposed on `window`: `Keypad.render()`, `Keypad.reset()`, `Keypad.openTagModal()
 [Entry] [Logs] [Summary] [Export]             ← bottom nav (persistent, all modes)
 ```
 
-## UI Layout (Voice Mode)
-
-```
-[HWS · LOG TALLY]  [Scale]  [Tally Name ↗]
-[LOGS: 12] [BF: 4.2k] [Next Tag: CW00042]   ← header stats
-[☁ Sign in to Sheets]                        ← sync bar
-──────────────────────────────────────────────
-[⌨ Keypad] [🎙️ Voice]
-
-[TAG: CW00042]  [＋]  [SKIP]                 ← same kp-tag-row as keypad
-[Length input]  [Diameter input]
-[BF preview]
-[🎙️ TAP TO SPEAK]
-[SAVE LOG] [CLEAR]
-```
+Browsing Logs/Summary/Export switches to the full header (stats + sync bar visible).
 
 ---
 
@@ -143,9 +125,9 @@ Key classes: `.kp-wrapper`, `.kp-stats-strip`, `.kp-tag-row`, `.kp-field`, `.kp-
 
 ## Service Worker
 
-`sw.js` — cache-first strategy. **Bump `CACHE_NAME` version (e.g. `log-tally-v2` → `v3`) with every deploy** so iOS picks up new files automatically. Google API calls always bypass cache.
+`sw.js` — cache-first strategy. **Bump `CACHE_NAME` version (e.g. `log-tally-v3` → `v4`) with every deploy** so iOS picks up new files automatically. Google API calls always bypass cache.
 
-Current version: `log-tally-v2`
+Current version: `log-tally-v3`
 
 ---
 
@@ -199,7 +181,7 @@ Logs render chronologically (first at top, newest at bottom). Tap a log to edit/
 - `updateHeader()` calls `Keypad.render()` at the end if `currentMode === 'keypad'` — be careful not to create render loops
 - Service worker path `/sw.js` is registered at root — works because GitHub Pages serves from root for this repo
 - The `panel-keypad` div is rendered by `Keypad.render()` not in static HTML — modals injected by keypad (`kpTagModal`) are inside that div
-- Voice mode uses `id="nextTagDisplay"` for the tag value, keypad uses `id="kpTagVal"` — both updated by `updateHeader()`
+- Keypad uses `id="kpTagVal"` for the tag value display, updated inside `Keypad.render()`
 
 ---
 
@@ -219,7 +201,6 @@ No build step, no npm, no bundler. Pure vanilla JS.
 
 ## What's Working
 - Keypad entry with live BF preview
-- Voice/speech input
 - Alphanumeric tag series with prefix support (e.g. CW00042)
 - Slash notation for cutbacks (e.g. 20/18)
 - Doyle / Scribner / Both scale modes
@@ -236,6 +217,6 @@ No build step, no npm, no bundler. Pure vanilla JS.
 - Fixed duplicate event listeners on kpTagVal causing phantom tag skips
 - Fixed render guard (_rendering flag) preventing double saves
 - Fixed Sheets not on window (was module-scoped, now window.Sheets = Sheets)
-- Service worker bumped to v2 to force iOS cache refresh
-- Stats strip order: Logs / BF / m³ / ☁ (sign-in) — same in both modes
-- Tag row style unified between keypad and voice modes (kp-tag-row class)
+- Service worker bumped to v3 to force iOS cache refresh
+- Stats strip order: Logs / BF / m³ / ☁ (sign-in)
+- Removed Voice/speech input mode — Keypad is now the only entry mode (speech.js deleted, voice entry panel and mode toggle removed from index.html)

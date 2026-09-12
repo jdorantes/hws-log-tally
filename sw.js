@@ -1,5 +1,5 @@
 // ─── LOG TALLY SERVICE WORKER ─────────────────────────────────────────────────
-const CACHE_NAME = 'log-tally-v2';
+const CACHE_NAME = 'log-tally-v3';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -7,7 +7,6 @@ const APP_SHELL = [
   '/js/config.js',
   '/js/app.js',
   '/js/keypad.js',
-  '/js/speech.js',
   '/js/sheets.js',
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap',
 ];

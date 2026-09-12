@@ -42,7 +42,6 @@ function updateHeader() {
   document.getElementById('statBF').textContent = totalBF >= 1000 ? (totalBF / 1000).toFixed(1) + 'k' : totalBF;
   const nt = state.nextTag !== null ? state.nextTag : '—';
   document.getElementById('statNextTag').textContent = nt;
-  document.getElementById('nextTagDisplay').textContent = nt;
   const btn = document.getElementById('tallyNameBtn');
   if (state.spreadsheetId && state.tallyName) {
     btn.innerHTML = '<a href="' + Sheets.sheetsUrl(state.spreadsheetId) + '" target="_blank" style="color:inherit;text-decoration:none">' + state.tallyName + ' ↗</a>';
@@ -52,42 +51,20 @@ function updateHeader() {
     btn.onclick = openTallyModal;
   }
   document.getElementById('scaleDisplay').textContent = state.scale ? state.scale.charAt(0).toUpperCase() + state.scale.slice(1) : 'No Scale';
-  updateBFLabel();
-  updatePlaceholders();
   updateBottomNav();
   if (currentMode === 'keypad') Keypad.render();
-}
-
-function updateBFLabel() {
-  const label = document.getElementById('bfLabel');
-  if (!label) return;
-  if (state.scale === 'both')          label.textContent = 'Doyle / Scribner BF';
-  else if (state.scale === 'doyle')    label.textContent = 'Board Feet (Doyle)';
-  else if (state.scale === 'scribner') label.textContent = 'Board Feet (Scribner)';
-  else                                  label.textContent = 'Board Feet';
-}
-
-function updatePlaceholders() {
-  const hasLogs = state.logs.length > 0;
-  const fL = document.getElementById('fLength');
-  const fD = document.getElementById('fDiameter');
-  if (fL) fL.placeholder = hasLogs ? '' : '10/9';
-  if (fD) fD.placeholder = hasLogs ? '' : '15/13';
 }
 
 let currentMode = 'keypad';
 let currentTab  = 'entry';
 
-function switchMode(mode) {
-  currentMode = mode;
-  document.getElementById('modeKeypadBtn').classList.toggle('mode-active', mode === 'keypad');
-  document.getElementById('modeVoiceBtn').classList.toggle('mode-active', mode === 'voice');
-  document.getElementById('voiceEntryPanel').style.display  = mode === 'voice'  ? 'block' : 'none';
-  document.getElementById('keypadEntryPanel').style.display = mode === 'keypad' ? 'block' : 'none';
-  document.getElementById('mainHeader').classList.toggle('slim', mode === 'keypad');
-  document.getElementById('headerStats').classList.toggle('hidden', mode === 'keypad');
-  document.getElementById('syncBar').classList.toggle('hidden', mode === 'keypad');
-  if (mode === 'keypad') { showTab('entry', true); Keypad.reset(); Keypad.render(); }
+function enterEntryMode() {
+  currentMode = 'keypad';
+  document.getElementById('mainHeader').classList.add('slim');
+  document.getElementById('headerStats').classList.add('hidden');
+  document.getElementById('syncBar').classList.add('hidden');
+  showTab('entry', true);
+  Keypad.reset(); Keypad.render();
   updateBottomNav();
 }
 
@@ -101,23 +78,10 @@ function showTab(name, silent = false) {
 
 function navTo(name) {
   if (name === 'entry') {
-    currentMode = 'keypad';
-    document.getElementById('modeKeypadBtn').classList.add('mode-active');
-    document.getElementById('modeVoiceBtn').classList.remove('mode-active');
-    document.getElementById('voiceEntryPanel').style.display = 'none';
-    document.getElementById('keypadEntryPanel').style.display = 'block';
-    document.getElementById('mainHeader').classList.add('slim');
-    document.getElementById('headerStats').classList.add('hidden');
-    document.getElementById('syncBar').classList.add('hidden');
-    showTab('entry', true);
-    Keypad.reset(); Keypad.render();
+    enterEntryMode();
   } else {
     if (currentMode === 'keypad') {
       currentMode = 'browse';
-      document.getElementById('modeKeypadBtn').classList.remove('mode-active');
-      document.getElementById('modeVoiceBtn').classList.remove('mode-active');
-      document.getElementById('keypadEntryPanel').style.display = 'none';
-      document.getElementById('voiceEntryPanel').style.display = 'none';
       document.getElementById('mainHeader').classList.remove('slim');
       document.getElementById('headerStats').classList.remove('hidden');
       document.getElementById('syncBar').classList.remove('hidden');
@@ -169,7 +133,7 @@ function openScaleModal() { document.getElementById('scaleModal').classList.add(
 function setScale(scale) {
   state.scale = scale; saveState(); updateHeader(); closeModal('scaleModal');
   toast('Scale: ' + scale.charAt(0).toUpperCase() + scale.slice(1), 'success');
-  updateFootagePreview(); if (currentMode === 'keypad') Keypad.render();
+  if (currentMode === 'keypad') Keypad.render();
 }
 
 function openTallyModal() { document.getElementById('tallyInput').value = state.tallyName; document.getElementById('tallyModal').classList.add('show'); setTimeout(() => document.getElementById('tallyInput').focus(), 120); }
@@ -189,47 +153,6 @@ function shareTallyLink() {
   const name = state.tallyName || 'Log Tally';
   if (navigator.share) { navigator.share({ title: name, text: 'HWS Log Tally: ' + name, url }).catch(() => {}); }
   else { navigator.clipboard.writeText(url).then(() => toast('Link copied!', 'success')); }
-}
-
-function onFieldInput(el, hintId) {
-  const p = parseField(el.value);
-  el.classList.toggle('has-cutback', !!(p && p.hasCutback));
-  const h = document.getElementById(hintId);
-  h.textContent = (p && p.hasCutback) ? 'cutback: ' + p.cut : (el.value && !p ? '?' : '');
-  updateFootagePreview();
-}
-
-function updateFootagePreview() {
-  const l = document.getElementById('fLength').value;
-  const d = document.getElementById('fDiameter').value;
-  const bf = calcBF(l, d, state.scale);
-  const el = document.getElementById('footagePreview');
-  if (!bf) { el.textContent = '—'; document.getElementById('saveBtn').disabled = true; return; }
-  if (state.scale === 'both') el.textContent = (bf.doyle || '—') + ' / ' + (bf.scribner || '—');
-  else el.textContent = (primaryBF(bf) || '—').toLocaleString();
-  document.getElementById('saveBtn').disabled = primaryBF(bf) === null;
-}
-
-function clearFields() {
-  ['fLength','fDiameter'].forEach(id => { const el = document.getElementById(id); el.value = ''; el.classList.remove('has-cutback'); });
-  ['hLength','hDiameter'].forEach(id => document.getElementById(id).textContent = '');
-  document.getElementById('footagePreview').textContent = '—';
-  document.getElementById('saveBtn').disabled = true;
-  document.getElementById('transcriptBox').textContent = 'Tap mic and speak measurements or commands';
-}
-
-async function saveLog() {
-  if (!state.scale) { openScaleModal(); return; }
-  if (state.nextTag === null) { openSeriesModal(); return; }
-  const l = document.getElementById('fLength').value.trim();
-  const d = document.getElementById('fDiameter').value.trim();
-  const bf = calcBF(l, d, state.scale);
-  if (!bf) { toast('Check measurements', 'error'); return; }
-  const lp = parseField(l), dp = parseField(d);
-  const log = { id: Date.now(), tag: state.nextTag, series: state.currentSeries, scale: state.scale, length: l, diameter: d, lengthCut: lp ? lp.cut : null, diameterCut: dp ? dp.cut : null, bf, rowNum: state.logs.length + 1 };
-  state.logs.push(log); incrementTag(); saveState(); updateHeader(); clearFields();
-  toast('Saved — ' + (state.scale === 'both' ? bf.doyle + '/' + bf.scribner : primaryBF(bf)) + ' BF', 'success');
-  syncAfterSave(log);
 }
 
 window.appState = () => state;
@@ -355,34 +278,6 @@ function renderSummary() {
   document.getElementById('summaryBody').innerHTML = html;
 }
 
-function setupSpeech() {
-  Speech.setup(
-    (transcript, isFinal) => { document.getElementById('transcriptBox').textContent = transcript; if (!isFinal) return; handleSpeechCommand(Speech.parse(transcript)); },
-    (status) => {
-      const btn = document.getElementById('micBtn'), lbl = document.getElementById('micLabel');
-      if (status==='listening') { btn.classList.add('listening'); lbl.textContent='🔴 Listening...'; document.getElementById('transcriptBox').textContent='...'; }
-      else if (status==='unavailable') { btn.disabled=true; lbl.textContent='🎙️ Not Available'; }
-      else { btn.classList.remove('listening'); lbl.textContent='🎙️ Tap to Speak'; }
-    }
-  );
-}
-
-function handleSpeechCommand(cmd) {
-  switch (cmd.cmd) {
-    case 'save': saveLog(); break;
-    case 'skip': skipTag(); break;
-    case 'tallyName': state.tallyName = cmd.value; saveState(); updateHeader(); toast('Load: '+state.tallyName,'success'); break;
-    case 'newSeries': state.nextTag = cmd.value; state.currentSeries++; saveState(); updateHeader(); toast('New series: '+state.nextTag,'success'); break;
-    case 'newSeriesPrompt': openSeriesModal(); break;
-    case 'measurements':
-      if (cmd.length)   { document.getElementById('fLength').value=cmd.length; onFieldInput(document.getElementById('fLength'),'hLength'); }
-      if (cmd.diameter) { document.getElementById('fDiameter').value=cmd.diameter; onFieldInput(document.getElementById('fDiameter'),'hDiameter'); }
-      if (!cmd.diameter) toast('Got length — speak diameter or enter manually');
-      break;
-    default: toast('Could not parse — try again','error');
-  }
-}
-
 function exportCSV() {
   if (!state.logs.length) { toast('No logs to export','error'); return; }
   const isBoth = state.scale==='both';
@@ -412,7 +307,7 @@ function confirmClearAll() {
 function clearAll() {
   state={tallyName:'',scale:null,nextTag:null,currentSeries:0,logs:[],spreadsheetId:null};
   tagPrefix=''; tagNumLength=5;
-  saveState(); updateHeader(); clearFields();
+  saveState(); updateHeader();
   if (currentMode==='keypad') Keypad.reset();
   toast('Cleared — ready for new load');
 }
@@ -422,8 +317,8 @@ window.addEventListener('online',updateOnline);
 window.addEventListener('offline',updateOnline);
 
 document.addEventListener('DOMContentLoaded',()=>{
-  loadState(); updateHeader(); setupSpeech(); updateOnline(); Sheets.init();
-  switchMode('keypad');
+  loadState(); updateHeader(); updateOnline(); Sheets.init();
+  enterEntryMode();
   document.querySelectorAll('.modal-bg').forEach(bg=>bg.addEventListener('click',e=>{if(e.target===bg)bg.classList.remove('show');}));
   document.getElementById('seriesInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmNewSeries();});
   document.getElementById('tallyInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmTallyName();});

@@ -25,7 +25,7 @@ const Keypad = (() => {
     const lenPlaceholder = hasLogs ? '—' : '10/9';
     const diaPlaceholder = hasLogs ? '—' : '15/13';
 
-    // Layout: stats strip first, then tag row (matches voice view order)
+    // Layout: stats strip first, then tag row
     panel.innerHTML = `
       <div class="kp-wrapper">
 

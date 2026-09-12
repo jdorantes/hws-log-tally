@@ -32,47 +32,7 @@
     <span class="sync-badge" id="syncBadge"></span>
   </div>
   <div class="panel active" id="panel-entry">
-    <div class="mode-toggle">
-      <button class="mode-btn mode-active" id="modeKeypadBtn" onclick="switchMode('keypad')">⌨  Keypad</button>
-      <button class="mode-btn" id="modeVoiceBtn" onclick="switchMode('voice')">🎙️  Voice</button>
-    </div>
-    <div id="keypadEntryPanel"><div id="panel-keypad"></div></div>
-    <div id="voiceEntryPanel" style="display:none">
-
-      <!-- Shared tag row — same style as keypad -->
-      <div class="kp-tag-row" style="margin-bottom:12px">
-        <div class="kp-tag-label">TAG</div>
-        <div class="kp-tag-val" id="nextTagDisplay">—</div>
-        <div class="kp-tag-actions">
-          <button class="kp-tag-btn" onclick="openSeriesModal()">＋</button>
-          <button class="kp-tag-btn" onclick="skipTag()">SKIP</button>
-        </div>
-      </div>
-
-      <div class="fields">
-        <div><div class="field-label">Length</div><input class="field-input" id="fLength" placeholder="10/9" inputmode="decimal" oninput="onFieldInput(this,'hLength')"></div>
-        <div><div class="field-label">Diameter</div><input class="field-input" id="fDiameter" placeholder="15/13" inputmode="decimal" oninput="onFieldInput(this,'hDiameter')"></div>
-      </div>
-      <div class="hints-row">
-        <div class="field-hint" id="hLength"></div>
-        <div class="field-hint" id="hDiameter"></div>
-      </div>
-      <div class="footage-preview">
-        <div class="label" id="bfLabel">Board Feet</div>
-        <div class="value" id="footagePreview">—</div>
-      </div>
-      <div class="speech-note">
-        <strong style="color:var(--canopy)">"twenty slash eighteen, fourteen"</strong> — length &amp; diameter<br>
-        <strong style="color:var(--canopy)">"save"</strong> · <strong style="color:var(--canopy)">"skip"</strong> · <strong style="color:var(--canopy)">"tally name Coldwater 633"</strong><br>
-        <strong style="color:var(--canopy)">"new series 72400"</strong>
-      </div>
-      <button class="mic-btn" id="micBtn" onclick="Speech.toggle()"><span id="micLabel">🎙️  TAP TO SPEAK</span></button>
-      <div class="transcript-box" id="transcriptBox">Tap mic and speak measurements or commands</div>
-      <div class="action-row">
-        <button class="btn-save" id="saveBtn" onclick="saveLog()" disabled>SAVE LOG</button>
-        <button class="btn-clear" onclick="clearFields()">CLEAR</button>
-      </div>
-    </div>
+    <div id="panel-keypad"></div>
   </div>
   <div class="panel" id="panel-logs">
     <div id="logList"><div class="empty-state">No logs entered yet.<br>Tap Entry to begin.</div></div>
@@ -108,7 +68,6 @@
 <div class="modal-bg" id="editModal"><div class="modal"><h3>Edit Log <span id="editTagLabel" style="color:var(--canopy);font-size:16px;font-family:var(--font-mono)"></span></h3><p>Edit values — use slash for cutbacks e.g. 10/9.</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;"><div><div style="font-size:9px;font-weight:700;color:var(--moss-bright);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Length</div><input class="modal-input" id="editLength" style="font-size:18px;margin-bottom:0;padding:12px;"></div><div><div style="font-size:9px;font-weight:700;color:var(--moss-bright);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Diameter</div><input class="modal-input" id="editDiameter" style="font-size:18px;margin-bottom:0;padding:12px;"></div></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('editModal')">Cancel</button><button class="btn-delete" onclick="deleteLog()">Delete</button><button class="btn-confirm" onclick="confirmEdit()">Save</button></div></div></div>
 <div class="toast" id="toast"></div>
 <script src="js/config.js"></script>
-<script src="js/speech.js"></script>
 <script src="js/sheets.js"></script>
 <script src="js/keypad.js"></script>
 <script src="js/app.js"></script>

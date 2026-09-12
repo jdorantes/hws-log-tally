@@ -1,6 +1,6 @@
 # Log Tally
 
-A mobile-first web app for tallying logs at the yard. Supports keypad and speech-to-text entry, Doyle and Scribner board foot formulas, cutback values on all fields, alphanumeric tag sequences, and direct Google Sheets sync with offline queuing.
+A mobile-first web app for tallying logs at the yard. Supports keypad entry, Doyle and Scribner board foot formulas, cutback values on all fields, alphanumeric tag sequences, and direct Google Sheets sync with offline queuing.
 
 ---
 
@@ -14,7 +14,6 @@ log-tally/
 ├── js/
 │   ├── app.js              Core logic, state, UI
 │   ├── keypad.js           Full-screen keypad input module
-│   ├── speech.js           Speech recognition + parser
 │   ├── sheets.js           Google Sheets API + offline queue
 │   ├── config.js           YOUR credentials (not in git)
 │   └── config.template.js  Template — copy to config.js
@@ -35,7 +34,6 @@ log-tally/
    - `css/style.css`
    - `js/app.js`
    - `js/keypad.js`
-   - `js/speech.js`
    - `js/sheets.js`
    - `js/config.template.js`
    - `.gitignore`
@@ -140,16 +138,14 @@ Changes go live on GitHub Pages within ~60 seconds.
 ### First time each load
 1. Tap the **scale badge** (top right of header) → choose Doyle, Scribner, or Both
 2. Tap **TAP TO NAME** → enter the load name/number
-3. Set your starting tag — tap **New Series** in voice mode, or long-press the tag number in keypad mode
+3. Set your starting tag — long-press the tag number
 4. Sign in to Google Sheets via the sync bar (optional — skip if offline)
 
 ---
 
-## Input Modes
+## Input Mode
 
-Toggle between **Voice** and **Keypad** using the mode switcher at the top of the Entry tab.
-
-### Keypad Mode
+### Keypad
 
 Designed for outdoor use — large keys readable in sunlight, easy to tap with gloves.
 
@@ -162,26 +158,11 @@ Designed for outdoor use — large keys readable in sunlight, easy to tap with g
 - `DEL` backspaces one character
 - **Auto-advance toggle** — when on, focus jumps to Diameter automatically after you tap `→` on Length
 
-**Tag entry in keypad mode:**
+**Tag entry:**
 - Long-press the tag number to open the series modal
 - Select letter prefix using the A-Z grid (supports any number of letters, e.g. `CW`, `A`, `TBR`)
 - Enter the starting number — the app auto-increments the numeric part on each save
 - Tags are alphanumeric: e.g. `CW00042`, `A72301`
-
-### Voice Mode
-
-Tap the mic and speak. The app stays in listening mode until it hears a final result.
-
-**Voice commands:**
-| Say | Action |
-|-----|--------|
-| `"twenty slash eighteen, fourteen"` | Length 20/18, diameter 14 |
-| `"save"` or `"next"` | Save current log and advance tag |
-| `"skip"` | Skip tag number |
-| `"tally name Coldwater 633"` | Set load name |
-| `"new series 72400"` | Start new tag sequence |
-
-**Cutback shortcuts:** "slash", "over", and "by" all work as the cutback separator.
 
 ---
 
