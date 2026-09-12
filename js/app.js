@@ -7,8 +7,15 @@ const SK = 'logTally_v3';
 function saveState() { try { localStorage.setItem(SK, JSON.stringify(state)); } catch(e) {} }
 function loadState() { try { const r = localStorage.getItem(SK); if (r) state = Object.assign(state, JSON.parse(r)); } catch(e) {} }
 
-function doyle(d, l)    { return Math.round(((d - 4) ** 2 * l) / 16); }
-function scribner(d, l) { return Math.round((0.79 * d ** 2 - 2 * d - 4) * l / 16); }
+function doyle(d, l) { return Math.round(((d - 4) ** 2 * l) / 16); }
+
+// Scribner Decimal C: use the official table (ScribnerTable) when the log
+// falls in its diameter/length range, otherwise fall back to the standard
+// quadratic approximation. See js/scribner-table.js for why the table exists.
+function scribner(d, l) {
+  const tabled = ScribnerTable.lookup(d, l);
+  return tabled !== null ? tabled : Math.round((0.79 * d ** 2 - 2 * d - 4) * l / 16);
+}
 
 function calcBF(lengthVal, diamVal, scale) {
   const lp = parseField(lengthVal), dp = parseField(diamVal);

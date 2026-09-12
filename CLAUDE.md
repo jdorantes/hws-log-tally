@@ -19,10 +19,11 @@ hws-log-tally/
 ├── css/
 │   └── style.css       Forest theme — all styles here, ~210 lines + appended additions
 └── js/
-    ├── config.js       Google credentials (CLIENT_ID, SHARED_FOLDER_ID, COLLABORATORS)
-    ├── app.js          Core app logic, state management, render functions
-    ├── keypad.js       Keypad UI module (self-contained, renders into #panel-keypad)
-    └── sheets.js       Google Sheets + Drive API, OAuth, offline queue
+    ├── config.js         Google credentials (CLIENT_ID, SHARED_FOLDER_ID, COLLABORATORS)
+    ├── app.js            Core app logic, state management, render functions
+    ├── keypad.js         Keypad UI module (self-contained, renders into #panel-keypad)
+    ├── scribner-table.js Official Scribner Decimal C lookup table (Koch 1972) + interpolation
+    └── sheets.js         Google Sheets + Drive API, OAuth, offline queue
 ```
 
 ---
@@ -125,16 +126,22 @@ Key classes: `.kp-wrapper`, `.kp-stats-strip`, `.kp-tag-row`, `.kp-field`, `.kp-
 
 ## Service Worker
 
-`sw.js` — cache-first strategy. **Bump `CACHE_NAME` version (e.g. `log-tally-v4` → `v5`) with every deploy** so iOS picks up new files automatically. Google API calls always bypass cache.
+`sw.js` — cache-first strategy. **Bump `CACHE_NAME` version (e.g. `log-tally-v5` → `v6`) with every deploy** so iOS picks up new files automatically. Google API calls always bypass cache.
 
-Current version: `log-tally-v4`
+Current version: `log-tally-v5`
 
 ---
 
 ## Formulas
 
-**Doyle:** `Math.round(((D - 4) ** 2 * L) / 16)`  
-**Scribner:** `Math.round((0.79 * D**2 - 2*D - 4) * L / 16)`  
+**Doyle:** `Math.round(((D - 4) ** 2 * L) / 16)` — Doyle is an exact closed-form rule by definition, no lookup table exists or is needed.
+
+**Scribner:** Scribner Decimal C has no exact formula — it's defined by mill sawing diagrams and published as a lookup table. `scribner(d, l)` in `app.js` therefore:
+1. First tries `ScribnerTable.lookup(d, l)` (`js/scribner-table.js`) — the official Koch (1972) table, diameter 6"-30" (rounded to nearest inch) x length 6-16 ft (linearly interpolated between tabulated columns). Verified to match all 150 tabulated values exactly.
+2. Falls back to the standard quadratic approximation `Math.round((0.79 * D**2 - 2*D - 4) * L / 16)` when diameter or length falls outside that range.
+
+The approximation formula alone (used everywhere before this) diverges from the official table by up to ~60% at small diameters (6"-10", mostly Decimal C's round-to-nearest-10 amplifying % error on small volumes) and by a systematic 2-6% undercount at large diameters (25"+); it's within ~1-8% for the common 12"-24" sawlog range. See commit history / CLAUDE.md git log around the Scribner table addition for the full accuracy comparison.
+
 **m³ from BF:** `Math.round(BF * 0.002360 * 1000) / 1000`
 
 Where L = length (cutback value if slash notation), D = diameter (cutback value).
@@ -188,6 +195,7 @@ Logs render chronologically (first at top, newest at bottom). Tap a log to edit/
 - Service worker path `/sw.js` is registered at root — works because GitHub Pages serves from root for this repo
 - The `panel-keypad` div is rendered by `Keypad.render()` not in static HTML — modals injected by keypad (`kpTagModal`) are inside that div
 - Keypad uses `id="kpTagVal"` for the tag value display, updated inside `Keypad.render()`
+- `js/scribner-table.js` must load before `js/app.js` (both in `index.html` and `sw.js`'s `APP_SHELL`) — `app.js`'s `scribner()` calls `ScribnerTable.lookup()` at call time, not load time, so a wrong script order wouldn't break instantly, but keep it before `app.js` for clarity and in case that ever changes
 - `Sheets.sheetsUrl(id)` must stay exposed on the returned `Sheets` object — `app.js` calls it from `updateHeader()` and `shareTallyLink()`; if it's ever missing, `updateHeader()` throws mid-function and `confirmTallyName()` never reaches `closeModal('tallyModal')`, so the Load Name modal looks stuck open after Save (this exact bug shipped once — fixed by adding `sheetsUrl`)
 - `window.updateHeader` is exposed specifically so `sheets.js` can refresh the header/keypad ☁ indicator immediately after sign-in, sign-out, or a detected expired token — don't remove it without replacing that call
 - `gapi()` in sheets.js treats a 401 response as an expired/invalid token: it resets `isSignedIn = false` so the UI naturally falls back to "Sign in to Sheets" instead of silently queuing failed syncs forever
@@ -212,7 +220,7 @@ No build step, no npm, no bundler. Pure vanilla JS.
 - Keypad entry with live BF preview
 - Alphanumeric tag series with prefix support (e.g. CW00042)
 - Slash notation for cutbacks (e.g. 20/18)
-- Doyle / Scribner / Both scale modes
+- Doyle (exact formula) / Scribner (official Koch 1972 table, formula fallback outside its range) / Both scale modes
 - Google Sheets sync with offline queue
 - OAuth sign-in (drive.file scope only)
 - Tally name as hyperlink to Google Sheet
@@ -227,9 +235,10 @@ No build step, no npm, no bundler. Pure vanilla JS.
 - Fixed duplicate event listeners on kpTagVal causing phantom tag skips
 - Fixed render guard (_rendering flag) preventing double saves
 - Fixed Sheets not on window (was module-scoped, now window.Sheets = Sheets)
-- Service worker bumped to v4 to force iOS cache refresh
+- Service worker bumped to v5 to force iOS cache refresh
 - Stats strip order: Logs / BF / m³ / ☁ (sign-in)
 - Removed Voice/speech input mode — Keypad is now the only entry mode (speech.js deleted, voice entry panel and mode toggle removed from index.html)
 - Fixed Load Name modal getting stuck open after Save — `Sheets.sheetsUrl()` was called but never defined/exposed, throwing inside `updateHeader()` and aborting `confirmTallyName()` before `closeModal()` ran
-- `createSpreadsheet()` now checks Drive for an existing sheet with the same title before creating one, so a half-finished load can be resumed by name instead of spawning a duplicate spreadsheet
 - Sign-in state now refreshes the header/keypad UI immediately (`window.updateHeader`), and an expired/invalid token (401) resets `isSignedIn` instead of silently queuing failed syncs forever
+- Confirming a tally name now checks Drive for an existing same-name spreadsheet and, if found, prompts Append / Rewrite / Create New (`existingSheetModal` / `resolveExistingSheet()`) instead of silently duplicating or silently resuming it. The background `syncAfterSave()` path still auto-resumes silently (no prompt) since it isn't an explicit user action.
+- Scribner BF was found to diverge sharply from real-world scale values (up to ~60% on small logs) because the app only ever used the textbook quadratic approximation. Added `js/scribner-table.js` — the official Koch (1972) Scribner Decimal C table — as the primary source, with the formula kept only as an out-of-range fallback. Verified to match all 150 tabulated diameter/length values exactly.
